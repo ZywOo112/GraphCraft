@@ -1,0 +1,3 @@
+displayName = GraphCraft: Visual Craft Planner
+author = fuq1ang
+version = 0.1

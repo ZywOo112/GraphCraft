@@ -1,0 +1,16 @@
+# Build outputs
+bin/
+obj/
+*.tmod
+
+# IDE and editor metadata
+.vs/
+.idea/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS-generated files
+Thumbs.db
