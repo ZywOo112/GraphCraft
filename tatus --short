@@ -1,0 +1,45 @@
+warning: in the working copy of 'GraphCraft.cs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'GraphCraft.csproj', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/GraphCraft.cs b/GraphCraft.cs[m
+[1mindex 088c9e9..e81e9ad 100644[m
+[1m--- a/GraphCraft.cs[m
+[1m+++ b/GraphCraft.cs[m
+[36m@@ -1,15 +1,7 @@[m
+[31m-using System;[m
+[31m-using System.Collections.Generic;[m
+[31m-using System.Linq;[m
+[31m-using System.Text;[m
+[31m-using System.Threading.Tasks;[m
+ using Terraria.ModLoader;[m
+ [m
+[31m-namespace GraphCraft[m
+[31m-{[m
+[31m-	// Please read https://github.com/tModLoader/tModLoader/wiki/Basic-tModLoader-Modding-Guide#mod-skeleton-contents for more information about the various files in a mod.[m
+[31m-	public class GraphCraft : Mod[m
+[31m-	{[m
+[32m+[m[32mnamespace GraphCraft;[m
+ [m
+[31m-	}[m
+[32m+[m[32mpublic sealed class GraphCraft : Mod[m
+[32m+[m[32m{[m
+ }[m
+[1mdiff --git a/GraphCraft.csproj b/GraphCraft.csproj[m
+[1mindex fb5ba97..5448d6e 100644[m
+[1m--- a/GraphCraft.csproj[m
+[1m+++ b/GraphCraft.csproj[m
+[36m@@ -5,7 +5,7 @@[m
+ [m
+ 	<!-- General -->[m
+ 	<PropertyGroup>[m
+[31m-		[m
+[32m+[m		[32m<Nullable>enable</Nullable>[m
+ 	</PropertyGroup>[m
+ [m
+ 	<!-- References -->[m
+[36m@@ -13,4 +13,4 @@[m
+ 		[m
+ 	</ItemGroup>[m
+ [m
+[31m-</Project>[m
+\ No newline at end of file[m
+[32m+[m[32m</Project>[m
