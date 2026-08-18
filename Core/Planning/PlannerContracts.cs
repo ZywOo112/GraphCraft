@@ -32,9 +32,9 @@ public sealed record IngredientPlanResult(
 	IngredientEdge Ingredient,
 	IngredientPlanStatus Status,
 	long RequiredQuantity,
-	int AvailableBefore,
-	int ReservedQuantity,
-	int RemainingAfter,
+	long AvailableBefore,
+	long ReservedQuantity,
+	long RemainingAfter,
 	long ShortageQuantity);
 
 public sealed class SingleRecipePlanningRequest

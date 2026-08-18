@@ -478,3 +478,137 @@ Furnace regression contract 保持：
 - `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
 - tModLoader `1.4.4.9+2026.06.3.6` server load-session：SUCCESS；GraphCraft completed graph build, SCC/subgraph checks, all prior synthetic regressions, and all Milestone 4.1 tests.
 - Validation server process was stopped after the complete PASS report; no world was entered and no player inventory was consumed or modified.
+
+## 2026-08-18 - Milestone 4.2: Recursive Single-Path Dependency Planning
+
+### Role and Scope
+
+- 4.2 在调用方已经明确选择 root Recipe 后，递归展开 exact-item dependency。
+- 只在 `TargetCraftSubgraph` 内恰好存在一个 canonical producer 时继续；这属于 recursion，不属于 recipe search。
+- Root Recipe、child recipes、ingredients 和 products 全部复用已有 graph identity；没有平行 dependency-tree model。
+- 新增 structured planning frontier、path-local cycle boundary、configured depth boundary 和 producer-before-consumer logical steps。
+
+### Unified Virtual Ledger
+
+`VirtualResourceLedger` 从 4.1 的 real reservation state 扩展为：
+
+```text
+planning remaining
+= initial real snapshot quantity
++ planned virtual production
+- planner reservations
+```
+
+- `InitialCounts` 仍直接来自 immutable `CraftResourceAggregateSnapshot`。
+- `PlannedProductionCounts` 只属于 Planning layer，不写入 resource source/aggregate snapshot，也不生成 fake provenance。
+- `ReservedCounts` 同时覆盖真实初始资源与虚拟中间产物的逻辑占用。
+- Reservation 和 production credit 均为 copy-on-write branch transition；父 Ledger 始终保持不变。
+- Root 成功后的 output 也 credit 到 final hypothetical Ledger；它表示完整 logical plan 假设成功后的规划状态，而不是真实 inventory。
+
+### Recursive Flow
+
+对每个 deterministic ordered exact requirement：
+
+1. 从当前 evolved Ledger 读取 remaining。
+2. 只计算 `deficit = required - remaining`。
+3. deficit 为正时，只统计 TargetCraftSubgraph 内 producer cardinality。
+4. 恰好一个 producer 时，以 deficit 为 child requested output 递归规划。
+5. Child success 后顺序采用 child result Ledger，并保留实际 output-stack surplus。
+6. Parent 再一次性 reserve 完整 requirement。
+7. 全部 requirements 成功后 credit 当前 Recipe 的实际 produced quantity，并追加当前 logical step。
+
+Sibling dependencies 顺序共享同一条 Ledger 演化链。任何 child 或后续 sibling 失败时，公开 root result 回到 root input Ledger，steps/reservations/productions 全为空。
+
+### Structured Frontiers
+
+- `NoProducerInTargetSubgraph`：derived item 在当前完整子图内没有 producer；不逃出子图。
+- `InsufficientTerminalResource`：现有 canonical graph metadata 证明 item 没有 producer。
+- `TargetSubgraphTruncated`：zero-producer boundary 位于截断子图，不能声称最终 atomic。
+- `AlternativeProducerDeferred`：子图内 producer 数量大于一；不选择、不尝试。
+- `DeferredRecipeGroupAllocation`：Recipe Group concrete allocation 继续留给 4.4。
+- `BlockedByStation` / `BlockedByCondition` / `UnknownConstraint`：直接保留 `RecipeResolution` evidence。
+- `CycleBoundary`：当前 dependency path 重入同一个 canonical Recipe；只停止 recursion。
+- `PlanningDepthBoundary`：超过 request 的稳定/configured maximum dependency depth。
+- `RecipeOutsideTargetSubgraph`：selected root 不属于当前 canonical subgraph。
+
+Frontier 保留 item、requirement、required/available/deficit、blocking recipe、depth、dependency path、candidate producers、Resolution evidence 和 subgraph truncation metadata；不保存 UI 文案。
+
+### Resolution Semantics
+
+- `NeedsIngredients` 不是永久阻塞；unique recursive child 可以向 Ledger credit 缺失 intermediate。
+- `ReadyNow` 只代表原始 runtime snapshot 的局部状态，不能覆盖前序 sibling 已经改变的 Ledger availability。
+- `BlockedByStation`、`BlockedByCondition` 和 `UnknownConstraint` 仍是外部 environment boundary；Planner 不重新读取 station、Condition 或 Player。
+
+### Deliberately Deferred
+
+- Alternative Recipe OR / root recipe selection；
+- 尝试 R1 失败后再尝试 R2；
+- Recipe Group concrete allocation；
+- general branch search、backtracking、scoring、shortest/cheapest/optimal path；
+- cycle fixed point / SCC planning；
+- source-level allocation、consume、transaction、execution、multiplayer、UI。
+
+### Synthetic Tests
+
+真实 tModLoader server load-session 自动执行：
+
+1. One-level recursive success：PASS。
+2. Multi-level recursive success：PASS。
+3. Existing partial intermediate only produces deficit：PASS。
+4. Intermediate surplus reused by sibling：PASS。
+5. Shared base resource cannot double-count recursively：PASS。
+6. Recursive root failure atomicity：PASS。
+7. Zero producer frontier：PASS。
+8. Multiple producers deferred：PASS。
+9. One ReadyNow producer among alternatives still deferred：PASS。
+10. Recipe Group still deferred：PASS。
+11. `NeedsIngredients` recursively resolvable：PASS。
+12. `ReadyNow` does not override evolved Ledger：PASS。
+13. `BlockedByStation` evidence propagation：PASS。
+14. `BlockedByCondition` evidence propagation：PASS。
+15. `UnknownConstraint` evidence propagation：PASS。
+16. Simple cycle boundary：PASS。
+17. Cycle detection is path-local：PASS。
+18. Configured planning depth boundary：PASS。
+19. Multi-output intermediate (`B x15`, reserve `12`, surplus `3`)：PASS。
+20. Source/aggregate/provenance/Resolution immutability：PASS。
+21. Graph-external convenient producer ignored：PASS。
+22. Recursive result determinism：PASS。
+
+额外 terminal-resource 与 truncated-subgraph boundary：PASS。
+
+### Regression and Performance
+
+- CraftGraph / SCC / TargetSubgraph load-time validations：PASS。
+- Dynamic Resolution scenarios：`6/6` PASS。
+- Resource Source tests：`7/7` PASS。
+- Milestone 4.1 Planner Foundation：`14/14` PASS。
+- Milestone 4.2 Recursive Planner：`22/22` PASS。
+- Resource source validation：`3.894 ms`。
+- Existing dynamic synthetic validation：`38.249 ms`。
+- Planner Foundation validation：`7.979 ms`。
+- Recursive Planner validation：`10.899 ms`。
+
+### Architecture Audit
+
+- Core recursive Planner references no `Player`, inventory, `adjTile`, `Main.recipe`, concrete storage or third-party Mod.
+- Producer discovery filters canonical `ItemNode.ProducerRecipes` through the request's exact `TargetCraftSubgraph.RecipeNodes` identity set.
+- Virtual production mutates neither runtime resource snapshots nor provenance.
+- Multiple producers and Recipe Groups return explicit deferred frontiers; no selection policy exists.
+- Cycle/depth behavior only prevents unsafe recursion; no cycle solving or search exists.
+- Root failure exposes no child Ledger state, planned steps, reservations or productions.
+
+### Forward Compatibility
+
+- 4.3 can create independent immutable child branches from the same parent Ledger for each candidate Recipe; branch selection policy remains absent today.
+- 4.4 can insert concrete Recipe Group allocation between requirement deficit evaluation and exact reservation.
+- Sequential Ledger evolution already prevents double-counting on one selected path; multi-alternative competition still needs branch result comparison/selection policy.
+- 4.6 can discard failed immutable branches without restoring a mutable singleton.
+- Canonical identity remains reference identity inside one materialized load-session graph, matching current Subgraph/Resolution dictionaries. Future cross-session persistence or graph reconstruction will need a stable graph-snapshot identity plus `RecipeIndex`/node key rather than accepting foreign objects by index alone.
+- Main future risks are alternative-branch result semantics, allocation across overlapping Recipe Groups, larger-plan copy-on-write cost, canonical identity across reconstructed snapshots, and full cycle/bootstrap policy.
+
+### Build and Runtime Result
+
+- `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
+- tModLoader `1.4.4.9+2026.06.3.6` server load-session：SUCCESS；all previous validations plus 22/22 recursive tests passed。
+- Validation server process was stopped after the complete report；no world was entered and no real resource was consumed。

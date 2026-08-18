@@ -53,7 +53,7 @@ internal static class PlannerFoundationSyntheticTests
 	{
 		PlayerCraftContextSnapshot context = SyntheticContext((101, 10));
 		VirtualResourceBalance balance = VirtualResourceLedger.Create(context.Resources).GetBalance(101);
-		Assert(balance == new VirtualResourceBalance(101, 10, 0, 10), "Test 1 ledger initialization mismatch.");
+		Assert(balance == new VirtualResourceBalance(101, 10, 0, 0, 10), "Test 1 ledger initialization mismatch.");
 	}
 
 	private static void TestSuccessfulReservation()
@@ -61,7 +61,7 @@ internal static class PlannerFoundationSyntheticTests
 		PlayerCraftContextSnapshot context = SyntheticContext((102, 10));
 		VirtualResourceLedger initial = VirtualResourceLedger.Create(context.Resources);
 		VirtualReservationAttempt attempt = initial.TryReserveExact(102, 4);
-		Assert(attempt.Succeeded && attempt.Ledger.GetBalance(102) == new VirtualResourceBalance(102, 10, 4, 6),
+		Assert(attempt.Succeeded && attempt.Ledger.GetBalance(102) == new VirtualResourceBalance(102, 10, 0, 4, 6),
 			"Test 2 successful reservation mismatch.");
 		Assert(context.Resources.GetAvailableCount(102) == 10 && initial.GetBalance(102).RemainingQuantity == 10,
 			"Test 2 mutated the input resource snapshot or ledger.");
@@ -82,7 +82,7 @@ internal static class PlannerFoundationSyntheticTests
 		VirtualResourceLedger initial = VirtualResourceLedger.Create(SyntheticContext((104, 5)).Resources);
 		VirtualReservationAttempt attempt = initial.TryReserveExact(104, 8);
 		Assert(!attempt.Succeeded && ReferenceEquals(attempt.Ledger, initial), "Test 4 failure returned a changed ledger.");
-		Assert(initial.GetBalance(104) == new VirtualResourceBalance(104, 5, 0, 5), "Test 4 corrupted ledger state.");
+		Assert(initial.GetBalance(104) == new VirtualResourceBalance(104, 5, 0, 0, 5), "Test 4 corrupted ledger state.");
 	}
 
 	private static void TestSingleRecipeAndSuccess()

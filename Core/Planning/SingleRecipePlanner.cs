@@ -24,8 +24,9 @@ public static class SingleRecipePlanner
 				resolutionEvidence: null);
 		}
 
-		long repetitions = DivideRoundUp(request.RequiredOutputQuantity, recipe.OutputStack);
-		long producedQuantity = checked(repetitions * recipe.OutputStack);
+		RecipePlanningQuantities quantities = RecipePlanningMath.Calculate(recipe, request.RequiredOutputQuantity);
+		long repetitions = quantities.CraftRepetitions;
+		long producedQuantity = quantities.ProducedQuantity;
 
 		RecipeResolution evidence = request.Resolution.GetRecipeResolution(recipe);
 		SingleRecipePlanStatus? blockedStatus = evidence.State switch
@@ -53,8 +54,8 @@ public static class SingleRecipePlanner
 			.ToArray();
 		if (orderedIngredients.Any(ingredient => ingredient.AcceptsRecipeGroup)) {
 			IngredientPlanResult[] deferred = orderedIngredients.Select(ingredient => {
-				long required = checked((long)ingredient.RequiredAmount * repetitions);
-				int available = request.Ledger.GetBalance(ingredient.Source.ItemType).RemainingQuantity;
+				long required = quantities.ScaleIngredient(ingredient);
+				long available = request.Ledger.GetBalance(ingredient.Source.ItemType).RemainingQuantity;
 				return new IngredientPlanResult(
 					ingredient,
 					ingredient.AcceptsRecipeGroup ? IngredientPlanStatus.DeferredRecipeGroup : IngredientPlanStatus.NotAttempted,
@@ -80,7 +81,7 @@ public static class SingleRecipePlanner
 		var reservations = new List<VirtualResourceReservation>(orderedIngredients.Length);
 		for (int index = 0; index < orderedIngredients.Length; index++) {
 			IngredientEdge ingredient = orderedIngredients[index];
-			long required = checked((long)ingredient.RequiredAmount * repetitions);
+			long required = quantities.ScaleIngredient(ingredient);
 			VirtualReservationAttempt attempt = trialLedger.TryReserveExact(ingredient.Source.ItemType, required);
 			if (!attempt.Succeeded) {
 				ingredientResults.Add(new IngredientPlanResult(
@@ -93,7 +94,7 @@ public static class SingleRecipePlanner
 					attempt.ShortageQuantity));
 				for (int remainingIndex = index + 1; remainingIndex < orderedIngredients.Length; remainingIndex++) {
 					IngredientEdge unattempted = orderedIngredients[remainingIndex];
-					int available = request.Ledger.GetBalance(unattempted.Source.ItemType).RemainingQuantity;
+					long available = request.Ledger.GetBalance(unattempted.Source.ItemType).RemainingQuantity;
 					ingredientResults.Add(new IngredientPlanResult(
 						unattempted,
 						IngredientPlanStatus.NotAttempted,
@@ -148,13 +149,6 @@ public static class SingleRecipePlanner
 			evidence);
 	}
 
-	private static long DivideRoundUp(int requiredOutputQuantity, int outputStack)
-	{
-		if (outputStack <= 0)
-			throw new InvalidOperationException("A concrete recipe must have a positive output stack.");
-		return ((long)requiredOutputQuantity + outputStack - 1L) / outputStack;
-	}
-
 	private static IngredientPlanResult[] CreateNotAttemptedResults(
 		RecipeNode recipe,
 		long repetitions,
@@ -163,7 +157,7 @@ public static class SingleRecipePlanner
 			.OrderBy(ingredient => ingredient.Ordinal)
 			.ThenBy(ingredient => ingredient.Source.ItemType)
 			.Select(ingredient => {
-				int available = ledger.GetBalance(ingredient.Source.ItemType).RemainingQuantity;
+				long available = ledger.GetBalance(ingredient.Source.ItemType).RemainingQuantity;
 				return new IngredientPlanResult(
 					ingredient,
 					IngredientPlanStatus.NotAttempted,

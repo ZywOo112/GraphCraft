@@ -49,6 +49,18 @@
 28. Recipe Group concrete-item allocation is explicitly deferred beyond Milestone 4.1; an iconic item is not an allocation.
 29. `ReadyNow` remains a direct local-resolution state and is not equivalent to recursively craftable.
 30. Planner results are logical plans only; source allocation, execution, transaction, consumption and rollback remain outside Planner.
+31. Recursive planning remains constrained to canonical recipes already present in the request's `TargetCraftSubgraph`.
+32. Milestone 4.2 automatically expands only exact-item dependencies with exactly one included producer recipe.
+33. Zero-producer dependencies become structured terminal/subgraph frontiers; multiple producers are deferred to Alternative Recipe planning.
+34. Recipe Group concrete allocation remains deferred.
+35. Virtual intermediate production exists only in `VirtualResourceLedger`; it must not be injected into runtime resource snapshots or provenance.
+36. Current planning availability is `initial real quantity + planned virtual production - reserved quantity`.
+37. Evolved Ledger state is the planning resource truth; Resolution ingredient readiness never overrides it.
+38. External station and condition evidence remains owned by `ResolutionSnapshot` and is never re-evaluated by Planner.
+39. A failed recursive root attempt publishes the original Ledger and no committed steps, reservations or productions.
+40. Cycle and depth detection are recursion safety boundaries, not cycle solving or search.
+41. Planned craft steps are dependency-ordered logical records, not execution commands.
+42. Recursive planning does not allocate concrete storage sources or mutate provenance.
 
 ## 当前结构
 
@@ -58,7 +70,7 @@
 - `Core/Context`：不可变的 aggregate resources、environment/station 与 Condition evidence 快照；不保存实时 Player 引用。
 - `Core/Resources`：resource source identity/kind/capability、immutable per-source snapshots、aggregate counts 和 provenance evidence。
 - `Core/Resolution`：把动态 context 覆盖到 canonical target subgraph nodes/edges，输出局部 resolution。
-- `Core/Planning`：Planner contracts、不可变 virtual resource ledger，以及仅针对一个明确 concrete recipe 的 graph-constrained AND planning；不包含 recursion 或 execution。
+- `Core/Planning`：Planner contracts、支持 virtual production 的不可变 resource ledger、单 Recipe AND planning，以及仅沿唯一 producer path 展开的 recursive planning；不包含 OR search、Recipe Group allocation 或 execution。
 - `Systems/CraftGraphBuilder`：把 setup 完成的 tModLoader recipes 转换为图。
 - `Systems/PlayerCraftContextCapture`：组合 resource/environment adapters 并捕获图中 Condition evidence；不自行解释具体 storage。
 - `Systems/Adapters`：Vanilla inventory 与 environment 的 concrete source adapters；未来第三方集成也应留在 adapter/integration 层。
@@ -82,10 +94,10 @@
 
 ## 当前状态
 
-- 已完成：Milestone 0、Milestone 1、Milestone 2、Milestone 3、Milestone 3.5（Craft Resource Source Abstraction），以及 Milestone 4.1（Planner Foundation & Virtual Resource Ledger）。
+- 已完成：Milestone 0、Milestone 1、Milestone 2、Milestone 3、Milestone 3.5、Milestone 4.1，以及 Milestone 4.2（Recursive Single-Path Dependency Planning）。
 - 已验证：单/多来源 aggregation、per-source provenance、跨来源 ingredient、multi-source Recipe Group、source isolation、Milestone 3 全回归和真实 tModLoader 加载。
 - 真实 Player capture 通过 `/gcstate <itemId>` 提供；自动化环境不能进入玩家世界，因此仍需游戏内手动验证。
-- 未开始：recursive dependency planning、Alternative Recipe OR、Recipe Group concrete allocation、global branch allocation、backtracking、material consumption、executor 或正式 UI。
+- 未开始：Alternative Recipe OR、Recipe Group concrete allocation、global alternative-branch competition、backtracking、cycle solving、material consumption、executor 或正式 UI。
 
 ## Milestone 3 约束
 
@@ -118,6 +130,19 @@
 - 缺少直接材料返回 `InsufficientDirectResources`；4.1 不发现 producer、不递归、不搜索替代、不分类 missing frontier、不解 cycle。
 - Source-level allocation 属于后续层；Ledger 保留 source aggregate snapshot identity，但当前只预留逻辑 aggregate quantity。
 
+## Milestone 4.2 约束
+
+- Root Recipe 仍由调用方明确选择；4.2 不选择 root recipe，也不尝试 alternative producer branches。
+- Exact ingredient 不足时先计算当前 Ledger deficit；只有子图内恰好一个 canonical producer 时才递归。
+- Child success 的 result Ledger 必须顺序传给下一 sibling 和 parent；不得让不同依赖重复从初始 Ledger 读取资源。
+- Recipe output 按真实 `OutputStack` credit 为 Planner-owned virtual production；surplus 保留并可被后续 sibling 复用。
+- Zero producer 按现有 graph evidence 区分 terminal resource、subgraph truncation 和 no-producer-in-subgraph frontier；不扫描图外证明 atomic。
+- Multiple producers 始终返回 `AlternativeProducerDeferred`，即使其中只有一个是 `ReadyNow`。
+- `NeedsIngredients` 可以由 recursion 解决；`ReadyNow` 不能覆盖 evolved Ledger；station/condition/unknown 继续由 Resolution 阻塞。
+- Cycle membership 只属于当前 dependency path；configured maximum depth 提供额外 stack-safety boundary。
+- Recursive root failure 返回原 Ledger，且公开 steps、reservations、productions 为空；这不是 general backtracking engine。
+- Planned steps 只记录 producer-before-consumer 的逻辑数量顺序，不含 runtime object、source allocation 或 execution mutation。
+
 ## Future Visualization Direction
 
 - Visualization 是 GraphCraft 的核心产品能力，不是装饰性功能。
@@ -126,4 +151,4 @@
 
 ## 下一里程碑
 
-Milestone 4.1 已建立单 Recipe 数量语义与不可变虚拟账本。下一步仅建议 Milestone 4.2：recursive dependency planning + intermediate products + missing frontier；不要自行开始 execution 或 UI。
+Milestone 4.2 已建立唯一 producer path 的递归数量传播、virtual intermediate production 和结构化 planning frontier。下一步仅建议 Milestone 4.3：Alternative Recipe OR planning；不要自行开始 Recipe Group allocation、backtracking、execution 或 UI。

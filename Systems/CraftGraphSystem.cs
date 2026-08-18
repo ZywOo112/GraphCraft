@@ -61,6 +61,9 @@ public sealed class CraftGraphSystem : ModSystem
 
 		PlannerFoundationSyntheticReport plannerReport = PlannerFoundationSyntheticTests.Run();
 		Mod.Logger.Info(CraftResolutionDiagnostics.FormatPlannerFoundationValidation(plannerReport));
+
+		RecursivePlannerSyntheticReport recursiveReport = RecursivePlannerSyntheticTests.Run();
+		Mod.Logger.Info(CraftResolutionDiagnostics.FormatRecursivePlannerValidation(recursiveReport));
 	}
 
 	public override void Unload()

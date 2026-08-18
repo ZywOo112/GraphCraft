@@ -8,6 +8,43 @@ namespace GraphCraft.Debug;
 
 internal static class CraftResolutionDiagnostics
 {
+	public static string FormatRecursivePlannerValidation(RecursivePlannerSyntheticReport report)
+	{
+		RecursiveRecipePlanResult example = report.OneLevelExample;
+		return $"""
+		[GraphCraft] Milestone 4.2 recursive single-path planner synthetic validation
+		  Test 1 One-level recursive success: PASS
+		  Test 2 Multi-level recursive success: PASS
+		  Test 3 Existing partial intermediate produces deficit only: PASS
+		  Test 4 Intermediate surplus reused by sibling: PASS
+		  Test 5 Shared recursive base resource cannot double-count: PASS
+		  Test 6 Recursive root failure atomicity: PASS
+		  Test 7 Zero producer structured frontier: PASS
+		  Test 8 Multiple producers deferred: PASS
+		  Test 9 One ReadyNow among alternatives still deferred: PASS
+		  Test 10 Recipe Group remains deferred: PASS
+		  Test 11 NeedsIngredients recursively resolved: PASS
+		  Test 12 ReadyNow does not override evolved Ledger: PASS
+		  Test 13 BlockedByStation evidence propagated: PASS
+		  Test 14 BlockedByCondition evidence propagated: PASS
+		  Test 15 UnknownConstraint evidence propagated: PASS
+		  Test 16 Simple cycle boundary: PASS
+		  Test 17 Cycle detection path-local: PASS
+		  Test 18 Configured planning depth boundary: PASS
+		  Test 19 Multi-output intermediate quantity/surplus: PASS
+		  Test 20 Snapshot/aggregate/provenance/Resolution immutability: PASS
+		  Test 21 Graph-external producer ignored: PASS
+		  Test 22 Recursive result determinism: PASS
+		  Additional terminal/truncation frontiers: {(report.TerminalAndTruncationBoundariesPassed ? "PASS" : "FAIL")}
+		  Example status: {example.Status}, steps={example.Steps.Count}, reservations={example.Reservations.Count}, productions={example.Productions.Count}
+		  Example step order: {string.Join(" -> ", example.Steps.Select(step => $"Recipe #{step.Recipe.RecipeIndex} x{step.CraftRepetitions}"))}
+		  Example intermediate balance: initial={example.ResultLedger.GetBalance(302).InitialQuantity}, produced={example.ResultLedger.GetBalance(302).PlannedProductionQuantity}, reserved={example.ResultLedger.GetBalance(302).ReservedQuantity}, remaining={example.ResultLedger.GetBalance(302).RemainingQuantity}
+		  Frontier example: {report.FrontierExample.Frontier?.Kind}, candidates={report.FrontierExample.Frontier?.CandidateProducers.Count}
+		  PassedRequiredTests: {report.PassedRequiredTestCount}/22
+		  RecursivePlannerValidationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}
+		""";
+	}
+
 	public static string FormatPlannerFoundationValidation(PlannerFoundationSyntheticReport report)
 	{
 		SingleRecipePlanResult example = report.QuantityExample;
