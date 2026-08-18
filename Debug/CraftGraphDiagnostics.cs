@@ -6,7 +6,7 @@ using GraphCraft.Core.Graph;
 
 namespace GraphCraft.Debug;
 
-internal static class CraftGraphDiagnostics
+internal static partial class CraftGraphDiagnostics
 {
 	public static string FormatStatistics(CraftGraphStatistics statistics)
 	{

@@ -35,24 +35,38 @@
 ## 当前结构
 
 - `Core/Graph`：只读图模型、节点、边、约束和统计。
+- `Core/Analysis`：对已物化的二部 `CraftGraph` 执行 SCC、cycle 标注、凝聚图和拓扑排序。
+- `Core/Subgraphs`：从目标 `ItemNode` 反向提取共享节点、替代配方和环均被保留的依赖子图。
 - `Systems/CraftGraphBuilder`：把 setup 完成的 tModLoader recipes 转换为图。
-- `Systems/CraftGraphSystem`：在 `PostSetupRecipes` 构建并发布一次静态图。
-- `Debug/CraftGraphDiagnostics`：只读取 `CraftGraph`，输出统计、目标检查和两跳文本子图。
+- `Systems/CraftGraphSystem`：在 `PostSetupRecipes` 构建并发布静态图与分析结果，并执行加载期验证。
+- `Debug/CraftGraphDiagnostics`：只读取 `CraftGraph`、分析结果和目标子图，输出结构化统计与图文本。
 
 ## Clean-Room
 
 允许使用当前项目、本地 tModLoader API/文档、官方 ExampleMod、官方 tModLoader 源码、通用图算法资料和 GBFR 论文。禁止读取、搜索或仿写 Recursive Craft 与 Magic Storage recursive crafting 的实现。
 
-## MVP 边界
+## Milestone 2 约束
 
-当前只完成 Milestone 0 和 Milestone 1：Materialized Static CraftGraph。不要实现 UI、Inventory scanning、dynamic overlay、VirtualInventory、recursive crafting、planner、executor、物品消耗、SCC 或完整 TargetSubgraphExtractor。
+- SCC 必须覆盖真实二部图中的全部 `ItemNode` 和 `RecipeNode`，边方向为 `Item -> Recipe -> Result Item`。
+- cycle 由 SCC 判定；单节点 SCC 只有存在 self-loop 才算 cyclic。
+- 凝聚图必须是 DAG，并为全部 component 生成且验证拓扑序。
+- Target dependency extraction 必须返回图子集，不得退化成复制节点的依赖树。
+- 同一个逻辑 Item 必须复用原 `CraftGraph` 的 canonical `ItemNode`；替代 producer、共享节点和 cycle 必须保留。
+- bounded extraction 必须同时支持 dependency depth 和 total graph-node 上限，并记录明确 truncation metadata。
+- `GraphAnalyzer` 与 `TargetSubgraphExtractor` 均只读取 `CraftGraph`，不得重新读取 `Main.recipe`。
 
 ## 当前状态
 
-- 已完成：环境基线、Git baseline、Graph-First 模型、`PostSetupRecipes` 图构建、真实图统计、Furnace target inspection、深度 2 文本图验证。
-- 当前 milestone：Milestone 1 complete。
-- 未开始：任何 dynamic player state、planner、executor 或正式 UI。
+- 已完成：Milestone 0、Milestone 1（Materialized Static CraftGraph）和 Milestone 2（GraphAnalyzer + TargetSubgraphExtractor）。
+- 已验证：真实 SCC/cycle、凝聚 DAG 拓扑序、Furnace 深度 2 子图、Cell Phone 深度 3 复杂子图、depth/node truncation。
+- 未开始：任何 dynamic player state、inventory scanning、planner、executor 或正式 UI。
+
+## Future Visualization Direction
+
+- Visualization 是 GraphCraft 的核心产品能力，不是装饰性功能。
+- 未来 UI 应从 `TargetCraftSubgraph` 取得 Item/Recipe nodes、typed edges、quantities、constraints、alternatives、SCC membership、shared identity 与 truncation metadata。
+- Milestone 3 才以独立 dynamic overlay 加入 `Owned`、`Craftable`、`MissingAtomic`、`Blocked` 与 `Alternative` 等状态；不得把这些状态写回静态 `CraftGraph`。
 
 ## 下一里程碑
 
-等待用户确认后进入 Milestone 2：`GraphAnalyzer + TargetSubgraphExtractor`，包括 SCC、cycle analysis、topology 和 target dependency subgraph。
+等待用户定义；不要自行进入 dynamic state、planner、executor 或 UI。

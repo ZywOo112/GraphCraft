@@ -80,4 +80,99 @@
 
 ### Next Milestone
 
-等待用户确认后进入 Milestone 2：`GraphAnalyzer + TargetSubgraphExtractor`（SCC、cycle analysis、topology、target dependency subgraph）。
+Milestone 2 已在同日后续工作中完成，详见下节。
+
+## 2026-08-18 - Milestone 2
+
+### Scope
+
+- 新增 `GraphAnalyzer`，只从已物化的 `CraftGraph` 读取节点与边。
+- 在真实 `ItemNode -> RecipeNode -> result ItemNode` 二部图上使用 iterative Tarjan SCC，时间复杂度为 `O(V + E)`，避免递归深度风险。
+- 生成 SCC membership、cycle 标记、凝聚 DAG、去重 component edges 和经完整验证的拓扑序。
+- 新增 `TargetSubgraphExtractor`，返回原图 canonical 节点/边组成的图子集；保留 alternatives、shared nodes 与 cycles。
+- 支持 full reachable 与 bounded extraction；bounded 模式同时限制 dependency depth 和 total graph nodes，并输出 truncation reason 与 skipped frontier count。
+- 未读取 inventory/player state，未实现 planner、executor 或 UI。
+
+### Files Created
+
+- `Core/Analysis/GraphNodeKey.cs`
+- `Core/Analysis/StronglyConnectedComponent.cs`
+- `Core/Analysis/CondensationGraph.cs`
+- `Core/Analysis/GraphAnalysisResult.cs`
+- `Core/Analysis/GraphAnalyzer.cs`
+- `Core/Subgraphs/TargetCraftSubgraph.cs`
+- `Core/Subgraphs/TargetSubgraphExtractor.cs`
+- `Debug/CraftGraphAnalysisDiagnostics.cs`
+
+### Files Modified
+
+- `Systems/CraftGraphSystem.cs`：图构建后发布分析结果并运行 SCC、目标子图和边界验证。
+- `Debug/CraftGraphDiagnostics.cs`：改为 partial，使 Milestone 1 与 Milestone 2 diagnostics 分文件维护。
+- `AGENTS.md`：更新架构、边界和当前 milestone 状态。
+- `DEVLOG.md`：记录实现与真实验证数据。
+
+### Real Graph Analysis
+
+2026-08-18，在当前 `enabled.json` Mod 环境中启动隐藏的 tModLoader server load-session，GraphCraft 加载期输出：
+
+- Graph build：`39.435 ms`
+- TotalNodes：`11157`
+- TotalEdges：`15829`
+- StronglyConnectedComponents：`9758`
+- CyclicComponents：`297`
+- AcyclicComponents：`9461`
+- NodesInCycles：`1696`（Item `760` / Recipe `936`）
+- LargestComponentSize：`30`
+- Condensation：`9758` nodes / `13914` edges
+- CondensationIsDag：`True`
+- TopologicalOrderCount：`9758`
+- SCC：`103.500 ms`
+- Total analysis：`185.835 ms`
+
+### Real Cycle Inspection
+
+- 最大 cyclic component：SCC `#830`，`30` 个节点。
+- 真实环链：`Laboratory Plating (ItemID 6560) -> Recipe #3627 -> Laboratory Shelf (ItemID 6563) -> Recipe #3621 -> Laboratory Plating (ItemID 6560)`。
+- 该输出同时列出 component 中的实际 ItemNodes 与 RecipeNodes，不使用合成示例。
+
+### Target Subgraph Validation
+
+Furnace（depth `2`，max nodes `250`）：
+
+- ItemNodes `20` / RecipeNodes `17` / TotalEdges `37`
+- AlternativeProducerRecipes `13` / SharedItemNodes `1`
+- IncludedComponents `7` / IncludedCyclicComponents `2`
+- `DepthLimit` truncation，SkippedFrontierCount `15`
+- Extraction：`1.849 ms`
+- 文本图显示 Stone Block 与 Wood 的 cyclic components、多个替代 producer，以及被 Torch 分支再次引用的 Wood `[shared node]`。
+
+Cell Phone（depth `3`，max nodes `180`）：
+
+- ItemNodes `30` / RecipeNodes `15` / TotalEdges `49`
+- AlternativeProducerRecipes `5` / SharedItemNodes `5`
+- IncludedComponents `41` / IncludedCyclicComponents `1`
+- `DepthLimit` truncation，SkippedFrontierCount `5`
+- Extraction：`0.260 ms`
+- 两个直接 producer（Magic Mirror / Ice Mirror）均被保留；PDA、Depth Meter、Compass、Glass 等共享节点复用 canonical ItemNode。
+
+另以 Cell Phone（depth `3`，max nodes `10`）执行加载期断言，实际得到 ItemNodes `7`、RecipeNodes `3`、TotalEdges `10`、SkippedFrontierCount `6`、Extraction `0.121 ms` 和 `NodeLimit` truncation；若未触发则 mod 加载失败。
+
+### Validation
+
+- `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
+- tModLoader server load-session：GraphCraft 完整完成图构建、SCC、凝聚 DAG 验证和目标子图提取；测试进程随后主动停止。
+- 所有 Milestone 2 分析均只读取 `CraftGraph`；没有重新遍历 `Main.recipe`。
+
+### Boundaries Preserved
+
+- 没有 inventory scanning 或 player/world dynamic state。
+- 没有 planner、executor、物品消耗或事务逻辑。
+- 没有 UI。
+- 没有读取或借鉴 Recursive Craft / Magic Storage recursive-crafting 源码。
+
+### Known Limitations
+
+- 当前结果只描述静态结构，不回答玩家是否拥有材料、当前环境是否满足 station/condition，亦不选择最佳 recipe path。
+- `FullReachable()` 已提供且 cycle-safe，但大型目标可能返回很大的子图；developer diagnostics 与未来 UI 初始视图应优先使用 bounded mode。
+- 文本 diagnostics 为便于阅读会把图投影成带 `[shared node]` 标记的展开视图；`TargetCraftSubgraph` 本身仍保存 canonical shared graph identity。
+- SCC 与目标子图在 mod load session 内计算一次；尚未实现跨 session 持久化或正式可视化界面。
