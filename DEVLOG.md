@@ -176,3 +176,116 @@ Cell Phone（depth `3`，max nodes `180`）：
 - `FullReachable()` 已提供且 cycle-safe，但大型目标可能返回很大的子图；developer diagnostics 与未来 UI 初始视图应优先使用 bounded mode。
 - 文本 diagnostics 为便于阅读会把图投影成带 `[shared node]` 标记的展开视图；`TargetCraftSubgraph` 本身仍保存 canonical shared graph identity。
 - SCC 与目标子图在 mod load session 内计算一次；尚未实现跨 session 持久化或正式可视化界面。
+
+## 2026-08-18 - Milestone 3
+
+### Dynamic Overlay Architecture
+
+```text
+Terraria Player
+-> PlayerCraftContextCapture
+-> immutable PlayerCraftContextSnapshot
+
+TargetCraftSubgraph + PlayerCraftContextSnapshot + existing GraphAnalysisResult
+-> ResolutionOverlayBuilder
+-> ResolutionSnapshot
+```
+
+- Static `CraftGraph`、SCC 和 target subgraph 没有加入任何玩家当前状态字段。
+- Snapshot 深拷贝 capture 时的 inventory counts、available station tile IDs 和 condition evidence；不会保存 Player reference 或实时 predicate。
+- Resolution 复用 source subgraph canonical ItemNodes、IngredientEdges、RecipeNodes 与 Milestone 2 SCC mapping。
+
+### Inventory Capture Scope
+
+- 真实 adapter 只读并按 ItemType 汇总普通 `player.inventory` 的全部非空 stack。
+- 不修改任何 slot，不消费物品。
+- 不包含 Chest、Piggy Bank、Safe、Defender's Forge、Void Bag、Magic Storage 或其他外部 storage。
+- `PlayerCraftContextSnapshot` 对输入集合再次复制；创建后来源集合变化不会影响旧 snapshot。
+
+### Station Semantics
+
+- 本机 `tModLoader.xml` 明确说明 `Player.adjTile[tileType]` 用于判断 crafting station requirement，并已包含 `ModTile.AdjTiles` 等价 tile。
+- 对本机 `Terraria.Recipe.PlayerMeetsTileRequirements` 的只读程序集元数据检查确认：每个非负 `requiredTile` 都必须对应 `adjTile[tileType] == true`，即多个 required tiles 为 AND。
+- Overlay 保存全部 required tile IDs 和明确 missing tile IDs。
+
+### Recipe Condition Semantics
+
+- Static metadata 保存 load-session stable `RecipeConditionKey(RecipeIndex, ConditionIndex)`、description 与官方 `Condition.IsMet()` evaluator 定义。
+- Capture 阶段对图中 condition 一次性求值并保存 `Satisfied`、`Unsatisfied` 或 `Unknown` evidence。
+- 本机 `RecipeLoader.RecipeAvailable` 元数据显示官方语义为全部 Conditions 调用 `Condition.IsMet()`。
+- evaluator 缺失、snapshot evidence 缺失或 evaluator 抛出异常时均为 `Unknown`；绝不猜测 true/false。
+
+### Resolution Semantics
+
+- Item：`Owned`（count > 0）、`UnownedAtomic`、`UnownedDerived`。
+- Direct Ingredient：按 canonical ItemType 查询 available count。
+- Recipe Group Ingredient：对 accepted item type union 求和，并保存正数量 alternative breakdown。
+- Recipe local states：`ReadyNow`、`NeedsIngredients`、`BlockedByStation`、`BlockedByCondition`、`UnknownConstraint`。
+- `ReadyNow` 仅表示一次直接 recipe execution 的 ingredients/station/conditions 局部满足；不传播 recursive craftability。
+- 每条 IngredientEdge 可独立 locally satisfied，但不会分配或扣除共享库存；Local Satisfaction 不等于 Global Craft Feasibility。
+
+### Synthetic Validation
+
+真实 tModLoader load-session 自动执行并全部通过：
+
+1. Stone Block required `20` / available `30` / local `True`。
+2. Stone Block required `20` / available `8` / local `False`。
+3. Any Wood required `4`，Wood `0`、Boreal Wood `10`：available `10`、RecipeGroup、local `True`，保留 Boreal Wood `x10` evidence。
+4. Furnace ingredients 足够、Work Bench unavailable：`BlockedByStation`，missing tile `WorkBenches (18)`。
+5. 真实 condition recipe 的 synthetic false evidence：`BlockedByCondition`。
+6. 同一 condition 的 synthetic unknown evidence：`UnknownConstraint`，不会成为 `ReadyNow`。
+
+额外 invariants：Furnace direct requirements 与 Work Bench 全满足时为 `ReadyNow`、station 满足但 Stone Block 不足时为 `NeedsIngredients`、snapshot source mutation isolation、全节点/边/recipe canonical coverage、CraftGraph statistics unchanged、两个 Wood `x10` edges 在 Wood `x10` context 中分别 local satisfied，但 `ResolutionSnapshot` 不存在 `GlobalPlanFeasible` 或 `TargetRecursivelyCraftable` 字段。
+
+### Real Condition Selection
+
+- 自动从当前 materialized graph 选择第一个真实有 Condition 的 recipe：`Recipe #174 -> Bottled Water (ItemID 126)`。
+- Condition：`Near water`。
+- 对该真实 condition identity 的 Satisfied / Unsatisfied / Unknown 映射均通过 synthetic context 验证。
+
+### Runtime and Performance
+
+- tModLoader server load-session：SUCCESS，六个 synthetic scenarios 全部 PASS。
+- Synthetic context copy：`1.298 ms`。
+- Furnace bounded overlay：`1.247 ms`。
+- Cell Phone bounded overlay：`0.078 ms`。
+- 完整 synthetic validation：`30.448 ms`（包含额外 ReadyNow / NeedsIngredients 与全部不变量断言）。
+- 自动化 server load-session 没有进入玩家世界，因此没有伪造真实 Player capture 数据。
+
+### Manual In-Game Validation Required
+
+- 进入单人世界后使用 `/gcstate 33` 捕获 Furnace overlay。
+- 分别在远离/靠近 Work Bench 时执行，确认 `BlockedByStation` 与 station satisfied 的变化。
+- 分别携带 Stone Block、Torch、普通 Wood 或 Boreal Wood，确认 direct count 与 Any Wood alternative evidence。
+- 使用 `/gcstate 126` 检查 Bottled Water；分别远离/靠近水体，确认 `Near water` Condition 状态随新 capture 更新，而旧 snapshot 不被修改。
+- 命令输出 `CaptureElapsedMs` 和 `OverlayElapsedMs`，用于记录真实玩家环境性能。
+
+### Files Created
+
+- `Core/Context/PlayerCraftContextSnapshot.cs`
+- `Core/Resolution/ResolutionModels.cs`
+- `Core/Resolution/ResolutionSnapshot.cs`
+- `Core/Resolution/ResolutionOverlayBuilder.cs`
+- `Systems/PlayerCraftContextCapture.cs`
+- `Debug/DynamicResolutionSyntheticTests.cs`
+- `Debug/CraftResolutionDiagnostics.cs`
+- `Debug/GraphCraftStateCommand.cs`
+
+### Files Modified
+
+- `Core/Graph/RecipeMetadata.cs`：保存 condition index 和 load-session evaluator definition，不保存动态结果。
+- `Systems/CraftGraphBuilder.cs`：物化官方 Condition identity/evaluator metadata。
+- `Systems/CraftGraphSystem.cs`：执行 Milestone 3 load-time synthetic validation；公开统一 target extraction helper。
+- `AGENTS.md`、`DEVLOG.md`：更新架构、不变量、验证与限制。
+
+### Build Result
+
+- `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
+
+### Known Limitations
+
+- 真实 Player/adjTile/Condition capture 需要进入玩家世界，当前自动化 server load-session 无法代替；提供 `/gcstate <itemId>` 手动入口。
+- MVP 不包含任何外部 storage、多玩家同步或动态 cache invalidation；每次命令按需重新 Capture + Resolve。
+- 当前只做 local recipe execution resolution，不处理共享资源分配、alternative selection、quantity propagation、backtracking 或 Missing Atomic Frontier。
+- `UnknownConstraint` 保守优先，任何未知 Condition 都阻止 `ReadyNow`。
+- 没有正式 UI；diagnostics 仅证明未来 visualization 所需数据已存在。

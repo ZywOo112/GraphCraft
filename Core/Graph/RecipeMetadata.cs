@@ -1,8 +1,30 @@
+using System;
 using System.Collections.Generic;
 
 namespace GraphCraft.Core.Graph;
 
-public sealed record RecipeConditionInfo(string LocalizationKey, string Description);
+public sealed class RecipeConditionInfo
+{
+	internal RecipeConditionInfo(
+		int conditionIndex,
+		string localizationKey,
+		string description,
+		Func<bool>? evaluator)
+	{
+		ConditionIndex = conditionIndex;
+		LocalizationKey = localizationKey;
+		Description = description;
+		Evaluator = evaluator;
+	}
+
+	public int ConditionIndex { get; }
+
+	public string LocalizationKey { get; }
+
+	public string Description { get; }
+
+	internal Func<bool>? Evaluator { get; }
+}
 
 public sealed record RecipeGroupInfo(
 	int GroupId,

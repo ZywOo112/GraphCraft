@@ -51,6 +51,13 @@ public sealed class CraftGraphSystem : ModSystem
 		Mod.Logger.Info("[GraphCraft] Node-limit safety validation passed for Cell Phone with MaximumGraphNodes=10.");
 		Mod.Logger.Info(CraftGraphDiagnostics.FormatSubgraphSummary(nodeLimitedSubgraph, CurrentAnalysis, Lang.GetItemNameValue));
 		Mod.Logger.Info(CraftGraphDiagnostics.FormatTargetSubgraphGraph(nodeLimitedSubgraph, CurrentAnalysis, Lang.GetItemNameValue));
+
+		DynamicResolutionSyntheticReport dynamicReport = DynamicResolutionSyntheticTests.Run(
+			Current,
+			CurrentAnalysis,
+			furnaceSubgraph,
+			complexSubgraph);
+		Mod.Logger.Info(CraftResolutionDiagnostics.FormatSyntheticValidation(dynamicReport, Lang.GetItemNameValue));
 	}
 
 	public override void Unload()
@@ -59,7 +66,7 @@ public sealed class CraftGraphSystem : ModSystem
 		Current = null;
 	}
 
-	private static TargetCraftSubgraph ExtractTarget(int itemType, TargetSubgraphOptions options)
+	public static TargetCraftSubgraph ExtractTarget(int itemType, TargetSubgraphOptions options)
 	{
 		if (Current is null || CurrentAnalysis is null)
 			throw new System.InvalidOperationException("CraftGraph and GraphAnalysisResult must be available before target extraction.");

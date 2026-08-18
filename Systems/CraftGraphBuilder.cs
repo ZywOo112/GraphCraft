@@ -49,9 +49,11 @@ internal static class CraftGraphBuilder
 			.ToArray();
 
 		RecipeConditionInfo[] conditions = recipe.Conditions
-			.Select(condition => new RecipeConditionInfo(
+			.Select((condition, conditionIndex) => new RecipeConditionInfo(
+				conditionIndex,
 				condition.Description.Key,
-				condition.Description.Value))
+				condition.Description.Value,
+				condition.IsMet))
 			.ToArray();
 
 		return new RecipeConstraintSet(requiredTiles, conditions);
