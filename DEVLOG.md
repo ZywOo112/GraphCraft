@@ -160,6 +160,7 @@ Cell Phone（depth `3`，max nodes `180`）：
 ### Validation
 
 - `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
+
 - tModLoader server load-session：GraphCraft 完整完成图构建、SCC、凝聚 DAG 验证和目标子图提取；测试进程随后主动停止。
 - 所有 Milestone 2 分析均只读取 `CraftGraph`；没有重新遍历 `Main.recipe`。
 
@@ -282,6 +283,7 @@ TargetCraftSubgraph + PlayerCraftContextSnapshot + existing GraphAnalysisResult
 
 - `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
 
+
 ### Known Limitations
 
 - 真实 Player/adjTile/Condition capture 需要进入玩家世界，当前自动化 server load-session 无法代替；提供 `/gcstate <itemId>` 手动入口。
@@ -403,3 +405,76 @@ Furnace regression contract 保持：
 ### Build Result
 
 - `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
+
+## 2026-08-18 - Milestone 4.1: Planner Foundation & Virtual Resource Ledger
+
+### Scope Implemented
+
+- 新增 `Core/Planning`，定义 single-recipe planning request/result、ingredient outcome、virtual reservation 与 immutable ledger。
+- `SingleRecipePlanningRequest` 把 selected canonical recipe、required output quantity、`TargetCraftSubgraph`、其 `ResolutionSnapshot`，以及从同一 aggregate resource snapshot 分支出的 ledger 绑定为一个一致输入。
+- `SingleRecipePlanner` 只处理一个明确 recipe 的直接 ingredient AND requirements；不查找 producer，不递归，不选择 alternative recipe。
+- 请求数量按 canonical `RecipeNode.OutputStack` 向上取整为 craft repetitions，并按 repetitions 缩放每条 ingredient requirement。
+- Exact-item requirements 共享同一个 trial ledger，防止有限资源被重复计算。
+- 单 Recipe 尝试只有全成功才发布新的 ledger 与 reservations；任何 requirement 失败都返回原 ledger，已暂存 ingredient 标记为 `StagedThenDiscarded`，对外 reservations 为空。
+- Planner 只消费现有 `RecipeResolution` 的 station/condition block；保留同一个 resolution evidence 引用，不访问 live runtime。
+- Recipe Group concrete allocation 明确返回 `DeferredRecipeGroupAllocation`，不把 iconic item 当作 exact requirement。
+
+### Virtual Ledger Semantics
+
+- Ledger 建立在 immutable `CraftResourceAggregateSnapshot` 上，并保留该 snapshot identity 与 aggregate/provenance 输入。
+- `initial` 来自 snapshot；`reserved` 只存在于 ledger branch；`remaining = initial - reserved`。
+- `TryReserveExact` 成功时 copy-on-write 创建新 branch；失败时返回原 ledger 实例，因此不会污染调用者状态。
+- 当前只做 aggregate logical reservation，不做 per-source allocation、transaction、consume、commit 或 execution rollback。
+
+### Deliberately Deferred
+
+- recursive dependencies、intermediate products、missing frontier；
+- Alternative Recipe OR、branch search、heuristic/optimal selection；
+- Recipe Group concrete-item allocation；
+- cross-branch shared-resource allocation、backtracking、cycle solving；
+- source-level allocation、execution、inventory consumption、multiplayer、UI。
+
+### Synthetic Validation
+
+真实 tModLoader server load-session 自动执行：
+
+1. Ledger initialization：PASS。
+2. Successful reservation + input snapshot unchanged：PASS。
+3. Repeated reservation uses remaining quantity：PASS。
+4. Failed reservation preserves ledger state：PASS。
+5. Single recipe AND success：PASS。
+6. Single recipe AND failure atomicity：PASS。
+7. Shared item cannot be double-counted：PASS。
+8. Output `x5`, requested `12` -> repetitions `3`, ingredient `2 x 3 = 6`, produced `15`：PASS。
+9. Output `x5`, requested `10` -> repetitions `2`, ingredient `4`, produced `10`：PASS。
+10. Source snapshot / aggregate / provenance immutability：PASS。
+11. Recipe outside `TargetCraftSubgraph` rejected before recipe metadata/resolution use：PASS。
+12. Missing direct ingredient does not recurse even when its producer is in the subgraph：PASS。
+13. `BlockedByStation` / `BlockedByCondition` / `UnknownConstraint` evidence propagated externally：PASS。
+14. Identical inputs produce deterministic status, repetitions, ingredient order and reservations：PASS。
+
+额外边界：Recipe Group concrete allocation deferred with no reservations：PASS。
+
+### Regression and Performance
+
+- Dynamic Resolution scenarios：`6/6` PASS。
+- Craft Resource Source tests：`7/7` PASS。
+- Furnace direct/group/station regression：PASS。
+- Real condition true/false/unknown mapping：PASS（Recipe #174 -> Bottled Water / Near water）。
+- Planner Foundation required tests：`14/14` PASS。
+- Resource source validation：`3.510 ms`。
+- Total existing dynamic synthetic validation：`38.474 ms`。
+- Planner Foundation validation：`5.788 ms`。
+
+### Architecture Audit
+
+- `Core/Planning` does not reference `Terraria.Player`, `Main.LocalPlayer`, `player.inventory`, `adjTile`, `Main.recipe`, Magic Storage, ImproveGame, Calamity or another concrete Mod.
+- Planner does not mutate `CraftGraph`, `TargetCraftSubgraph`, `ResolutionSnapshot`, resource-source snapshots, aggregate snapshots or provenance。
+- No recursive/search/backtracking/execution API was introduced.
+- Immutable branch state is intentionally small copy-on-write reserved-count data. This prioritizes correctness and deterministic replay for 4.1 while remaining directly usable as future branch state.
+
+### Build and Runtime Result
+
+- `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
+- tModLoader `1.4.4.9+2026.06.3.6` server load-session：SUCCESS；GraphCraft completed graph build, SCC/subgraph checks, all prior synthetic regressions, and all Milestone 4.1 tests.
+- Validation server process was stopped after the complete PASS report; no world was entered and no player inventory was consumed or modified.

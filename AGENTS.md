@@ -39,6 +39,16 @@
 18. Available crafting resources are the aggregate of immutable resource-source snapshots, not a synonym for `player.inventory`.
 19. Aggregate counts must retain per-source and per-item provenance.
 20. Read visibility does not imply automatic consumption capability; future execution must use a separate adapter transaction boundary.
+21. Planner Core reads only `TargetCraftSubgraph`, `ResolutionSnapshot`, and immutable resource-ledger state; it must not read live Terraria state.
+22. Planning is graph-constrained: a selected recipe must be the canonical recipe instance included in the request's target subgraph.
+23. Resource-source and aggregate snapshots are immutable planning inputs; virtual reservations never consume or mutate them.
+24. All direct ingredient requirements in one recipe attempt share one quantity-aware ledger, so the same finite resource cannot be counted twice.
+25. A failed single-recipe attempt commits no virtual reservations and returns the original ledger branch.
+26. Milestone 4.1 never recursively resolves a missing direct ingredient and never labels it an atomic missing frontier.
+27. Requested output quantity and canonical recipe output stack determine craft repetitions and scaled ingredient quantities.
+28. Recipe Group concrete-item allocation is explicitly deferred beyond Milestone 4.1; an iconic item is not an allocation.
+29. `ReadyNow` remains a direct local-resolution state and is not equivalent to recursively craftable.
+30. Planner results are logical plans only; source allocation, execution, transaction, consumption and rollback remain outside Planner.
 
 ## 当前结构
 
@@ -48,6 +58,7 @@
 - `Core/Context`：不可变的 aggregate resources、environment/station 与 Condition evidence 快照；不保存实时 Player 引用。
 - `Core/Resources`：resource source identity/kind/capability、immutable per-source snapshots、aggregate counts 和 provenance evidence。
 - `Core/Resolution`：把动态 context 覆盖到 canonical target subgraph nodes/edges，输出局部 resolution。
+- `Core/Planning`：Planner contracts、不可变 virtual resource ledger，以及仅针对一个明确 concrete recipe 的 graph-constrained AND planning；不包含 recursion 或 execution。
 - `Systems/CraftGraphBuilder`：把 setup 完成的 tModLoader recipes 转换为图。
 - `Systems/PlayerCraftContextCapture`：组合 resource/environment adapters 并捕获图中 Condition evidence；不自行解释具体 storage。
 - `Systems/Adapters`：Vanilla inventory 与 environment 的 concrete source adapters；未来第三方集成也应留在 adapter/integration 层。
@@ -71,10 +82,10 @@
 
 ## 当前状态
 
-- 已完成：Milestone 0、Milestone 1、Milestone 2、Milestone 3，以及 Milestone 3.5（Craft Resource Source Abstraction）。
+- 已完成：Milestone 0、Milestone 1、Milestone 2、Milestone 3、Milestone 3.5（Craft Resource Source Abstraction），以及 Milestone 4.1（Planner Foundation & Virtual Resource Ledger）。
 - 已验证：单/多来源 aggregation、per-source provenance、跨来源 ingredient、multi-source Recipe Group、source isolation、Milestone 3 全回归和真实 tModLoader 加载。
 - 真实 Player capture 通过 `/gcstate <itemId>` 提供；自动化环境不能进入玩家世界，因此仍需游戏内手动验证。
-- 未开始：recursive planner、VirtualInventory、global allocation、material consumption、executor 或正式 UI。
+- 未开始：recursive dependency planning、Alternative Recipe OR、Recipe Group concrete allocation、global branch allocation、backtracking、material consumption、executor 或正式 UI。
 
 ## Milestone 3 约束
 
@@ -96,6 +107,17 @@
 - station availability 通过可合并 `ICraftEnvironmentSource`/`CraftEnvironmentSnapshot` 提供；Resolution 不得依赖 `player.adjTile`。
 - 当前不实现 consume、allocation、commit、rollback 或 race validation。未来 execution 必须按 SourceId 找到独立 transaction adapter，而不是修改 snapshot。
 
+## Milestone 4.1 约束
+
+- `SingleRecipePlanner` 只判断一个明确选中的 canonical `RecipeNode` 的直接 AND requirements。
+- `SingleRecipePlanningRequest` 绑定同一个 target subgraph、对应 resolution snapshot、selected recipe、required output quantity，以及从同一 resource snapshot 分支出的 ledger。
+- `VirtualResourceLedger` 是 aggregate item counts 之上的 immutable copy-on-write 状态；成功预留返回新分支，失败返回原分支。
+- 单 Recipe 尝试先在 trial branch 上暂存预留，只有所有 exact-item requirements 都成功才发布结果。
+- Station / Condition 决策只消费已有 `RecipeResolution`；Planner 不重新访问 runtime API。
+- Recipe Group requirement 返回 `DeferredRecipeGroupAllocation`，不预留 iconic item，也不选择 concrete accepted items。
+- 缺少直接材料返回 `InsufficientDirectResources`；4.1 不发现 producer、不递归、不搜索替代、不分类 missing frontier、不解 cycle。
+- Source-level allocation 属于后续层；Ledger 保留 source aggregate snapshot identity，但当前只预留逻辑 aggregate quantity。
+
 ## Future Visualization Direction
 
 - Visualization 是 GraphCraft 的核心产品能力，不是装饰性功能。
@@ -104,4 +126,4 @@
 
 ## 下一里程碑
 
-Milestone 3.5 已为 Planner 提供 aggregate availability 与 provenance。等待用户确认后进入 Milestone 4：Graph-Constrained Craft Planner；不要自行开始 execution 或 UI。
+Milestone 4.1 已建立单 Recipe 数量语义与不可变虚拟账本。下一步仅建议 Milestone 4.2：recursive dependency planning + intermediate products + missing frontier；不要自行开始 execution 或 UI。

@@ -58,6 +58,9 @@ public sealed class CraftGraphSystem : ModSystem
 			furnaceSubgraph,
 			complexSubgraph);
 		Mod.Logger.Info(CraftResolutionDiagnostics.FormatSyntheticValidation(dynamicReport, Lang.GetItemNameValue));
+
+		PlannerFoundationSyntheticReport plannerReport = PlannerFoundationSyntheticTests.Run();
+		Mod.Logger.Info(CraftResolutionDiagnostics.FormatPlannerFoundationValidation(plannerReport));
 	}
 
 	public override void Unload()

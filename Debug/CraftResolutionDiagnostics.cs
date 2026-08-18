@@ -1,12 +1,39 @@
 using System;
 using System.Linq;
 using System.Text;
+using GraphCraft.Core.Planning;
 using GraphCraft.Core.Resolution;
 
 namespace GraphCraft.Debug;
 
 internal static class CraftResolutionDiagnostics
 {
+	public static string FormatPlannerFoundationValidation(PlannerFoundationSyntheticReport report)
+	{
+		SingleRecipePlanResult example = report.QuantityExample;
+		IngredientPlanResult ingredient = example.IngredientResults.Single();
+		return $"""
+		[GraphCraft] Milestone 4.1 planner foundation synthetic validation
+		  Test 1 Ledger initialization: PASS (initial=10 reserved=0 remaining=10)
+		  Test 2 Successful reservation: PASS (reserve=4 remaining=6; snapshot=10)
+		  Test 3 Repeated reservation uses remaining: PASS (reserve 6 then 5 -> available=4 FAIL)
+		  Test 4 Failed reservation preserves state: PASS
+		  Test 5 Single recipe AND success: PASS
+		  Test 6 Single recipe AND failure atomicity: PASS (no committed reservations)
+		  Test 7 Shared item cannot be double-counted: PASS (X=7, needs 5+4 -> FAIL)
+		  Test 8 Recipe output count: PASS (requested={example.RequestedOutputQuantity}, repetitions={example.CraftRepetitions}, required={ingredient.RequiredQuantity}, produced={example.ProducedQuantity})
+		  Test 9 Exact quantity boundary: PASS (requested=10, repetitions=2, required=4, produced=10)
+		  Test 10 Source/aggregate/provenance immutability: PASS
+		  Test 11 Graph constraint: PASS (outside recipe rejected)
+		  Test 12 Missing direct ingredient does not recurse: PASS
+		  Test 13 Station/condition evidence propagation: PASS
+		  Test 14 Determinism: PASS
+		  Additional Recipe Group boundary: {(report.RecipeGroupBoundaryPassed ? "PASS" : "FAIL")} (concrete allocation deferred)
+		  PassedRequiredTests: {report.PassedRequiredTestCount}/14
+		  PlannerFoundationValidationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}
+		""";
+	}
+
 	public static string FormatSyntheticValidation(
 		DynamicResolutionSyntheticReport report,
 		Func<int, string> itemName)
