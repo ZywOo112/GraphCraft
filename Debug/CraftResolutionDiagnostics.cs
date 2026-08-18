@@ -27,6 +27,15 @@ internal static class CraftResolutionDiagnostics
 		  Real condition description: {report.ConditionDescription}
 		  Real condition true/false/unknown mapping: PASS
 		  PassedScenarios: {report.PassedScenarioCount}
+		  Resource Test A single source compatibility: PASS
+		  Resource Test B multiple source aggregation: PASS (3 + 7 = {report.ResourceSourceReport.MultiSourceAggregateCount})
+		  Resource Test C per-source provenance: PASS
+		  Resource Test D ingredient split across sources: PASS
+		  Resource Test E insufficient aggregate: PASS
+		  Resource Test F multi-source RecipeGroup evidence: PASS
+		  Resource Test G immutable source isolation: PASS
+		  PassedResourceSourceTests: {report.ResourceSourceReport.PassedTestCount}
+		  ResourceSourceValidationElapsedMs: {report.ResourceSourceReport.Elapsed.TotalMilliseconds:F3}
 		  SyntheticContextElapsedMs: {report.SyntheticContextElapsed.TotalMilliseconds:F3}
 		  FurnaceOverlayElapsedMs: {report.FurnaceOverlayElapsed.TotalMilliseconds:F3}
 		  CellPhoneOverlayElapsedMs: {report.CellPhoneOverlayElapsed.TotalMilliseconds:F3}
@@ -42,7 +51,10 @@ internal static class CraftResolutionDiagnostics
 		ItemResolution targetResolution = snapshot.GetItemResolution(snapshot.Target);
 		builder.AppendLine($"[GraphCraft] Resolution #{snapshot.ResolutionId}: {itemName(snapshot.Target.ItemType)} (ItemID {snapshot.Target.ItemType})");
 		builder.AppendLine($"  ContextSnapshot: #{snapshot.Context.SnapshotId}, player={snapshot.Context.SourcePlayerIndex}, captured={snapshot.Context.CapturedAtUtc:O}");
-		builder.AppendLine($"  InventoryTypes: {snapshot.Context.InventoryCounts.Count}, InventoryItems: {snapshot.Context.TotalInventoryItemCount}");
+		builder.AppendLine($"  ResourceSources: {snapshot.Context.ResourceSources.Count}, AggregateResourceTypes: {snapshot.Context.AggregateResourceCounts.Count}, AggregateResourceItems: {snapshot.Context.TotalResourceItemCount}");
+		foreach (var source in snapshot.Context.ResourceSources) {
+			builder.AppendLine($"    Source {source.Descriptor.SourceId} ({source.Descriptor.SourceKind}): types={source.ResourceCounts.Count}, consumption={source.Descriptor.ConsumptionCapability}");
+		}
 		builder.AppendLine($"  AvailableStationTiles: {snapshot.Context.AvailableTileTypes.Count}, CapturedConditions: {snapshot.Context.ConditionEvidence.Count}");
 		builder.AppendLine($"  TargetState: {targetResolution.State}, CurrentCount: {targetResolution.CurrentCount}, Component: #{targetResolution.ComponentId}, Cyclic: {targetResolution.IsCyclic}");
 		builder.AppendLine($"  Coverage: items={snapshot.ItemResolutions.Count}, ingredients={snapshot.IngredientResolutions.Count}, recipes={snapshot.RecipeResolutions.Count}");
@@ -58,10 +70,10 @@ internal static class CraftResolutionDiagnostics
 			builder.AppendLine($"    Recipe #{recipe.Recipe.RecipeIndex}: {recipe.State} (ReadyNow is local-only)");
 			foreach (IngredientResolution ingredient in recipe.Ingredients) {
 				builder.Append($"      - {itemName(ingredient.Ingredient.Source.ItemType)} x{ingredient.RequiredAmount}: available={ingredient.AvailableAmount}, local={ingredient.LocallySatisfied}, mode={ingredient.ResolutionMode}");
-				if (ingredient.MatchedAlternativeItems.Count > 0) {
+				if (ingredient.MatchedResources.Count > 0) {
 					builder.Append(" [");
-					builder.Append(string.Join(", ", ingredient.MatchedAlternativeItems.Select(evidence =>
-						$"{itemName(evidence.ItemType)} x{evidence.Count}")));
+					builder.Append(string.Join(", ", ingredient.MatchedResources.Select(evidence =>
+						$"{itemName(evidence.ItemType)} x{evidence.Count} from {evidence.SourceId}")));
 					builder.Append(']');
 				}
 				builder.AppendLine();

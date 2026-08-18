@@ -4,13 +4,19 @@ using System.Diagnostics;
 using System.Linq;
 using GraphCraft.Core.Context;
 using GraphCraft.Core.Graph;
+using GraphCraft.Core.Resources;
+using GraphCraft.Systems.Adapters;
 using Terraria;
 
 namespace GraphCraft.Systems;
 
 public static class PlayerCraftContextCapture
 {
-	public static PlayerCraftContextSnapshot Capture(Player player, CraftGraph graph)
+	public static PlayerCraftContextSnapshot Capture(
+		Player player,
+		CraftGraph graph,
+		IEnumerable<ICraftResourceSource>? additionalResourceSources = null,
+		IEnumerable<ICraftEnvironmentSource>? additionalEnvironmentSources = null)
 	{
 		ArgumentNullException.ThrowIfNull(player);
 		ArgumentNullException.ThrowIfNull(graph);
@@ -18,19 +24,21 @@ public static class PlayerCraftContextCapture
 			throw new InvalidOperationException("Player crafting context capture requires a sealed CraftGraph.");
 
 		long captureStartTimestamp = Stopwatch.GetTimestamp();
-		var inventoryCounts = new Dictionary<int, int>();
-		foreach (Item item in player.inventory) {
-			if (item is null || item.IsAir || item.stack <= 0)
-				continue;
-			inventoryCounts[item.type] = inventoryCounts.GetValueOrDefault(item.type) + item.stack;
-		}
+		var resourceSources = new List<ICraftResourceSource> { new VanillaPlayerInventoryResourceSource(player) };
+		if (additionalResourceSources is not null)
+			resourceSources.AddRange(additionalResourceSources);
+		CraftResourceSourceSnapshot[] resourceSnapshots = resourceSources.Select(source => {
+			CraftResourceSourceSnapshot snapshot = source.Capture();
+			if (snapshot.Descriptor != source.Descriptor)
+				throw new InvalidOperationException($"Resource source {source.Descriptor.SourceId} returned a snapshot with a different descriptor.");
+			return snapshot;
+		}).ToArray();
 
-		bool[] adjacentTiles = player.adjTile;
-		var availableTileTypes = new List<int>();
-		for (int tileType = 0; tileType < adjacentTiles.Length; tileType++) {
-			if (adjacentTiles[tileType])
-				availableTileTypes.Add(tileType);
-		}
+		var environmentSources = new List<ICraftEnvironmentSource> { new VanillaPlayerEnvironmentSource(player) };
+		if (additionalEnvironmentSources is not null)
+			environmentSources.AddRange(additionalEnvironmentSources);
+		CraftEnvironmentSnapshot environment = CraftEnvironmentSnapshot.Merge(
+			environmentSources.Select(source => source.Capture()));
 
 		var conditionEvidence = new List<CapturedConditionEvidence>();
 		foreach (RecipeNode recipe in graph.RecipesByIndex.Values.OrderBy(recipe => recipe.RecipeIndex)) {
@@ -41,8 +49,8 @@ public static class PlayerCraftContextCapture
 		}
 
 		return PlayerCraftContextSnapshot.CreateCaptured(
-			inventoryCounts,
-			availableTileTypes,
+			resourceSnapshots,
+			environment,
 			conditionEvidence,
 			player.whoAmI,
 			captureStartTimestamp);

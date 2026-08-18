@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using GraphCraft.Core.Resources;
 
 namespace GraphCraft.Core.Context;
 
@@ -28,11 +29,10 @@ public sealed record CapturedConditionEvidence(
 public sealed class PlayerCraftContextSnapshot
 {
 	private static long _nextSnapshotId;
-	private readonly HashSet<int> _availableTileTypes;
 
 	private PlayerCraftContextSnapshot(
-		IEnumerable<KeyValuePair<int, int>> inventoryCounts,
-		IEnumerable<int> availableTileTypes,
+		IEnumerable<CraftResourceSourceSnapshot> resourceSources,
+		CraftEnvironmentSnapshot environment,
 		IEnumerable<CapturedConditionEvidence> conditionEvidence,
 		int? sourcePlayerIndex,
 		bool isSynthetic,
@@ -40,23 +40,14 @@ public sealed class PlayerCraftContextSnapshot
 		long? captureStartTimestamp)
 	{
 		var creationTimer = Stopwatch.StartNew();
-		var inventoryCopy = new Dictionary<int, int>();
-		foreach ((int itemType, int count) in inventoryCounts) {
-			if (itemType <= 0)
-				throw new ArgumentOutOfRangeException(nameof(inventoryCounts), "Inventory item types must be positive.");
-			if (count < 0)
-				throw new ArgumentOutOfRangeException(nameof(inventoryCounts), "Inventory counts cannot be negative.");
-			if (count > 0)
-				inventoryCopy[itemType] = checked(inventoryCopy.GetValueOrDefault(itemType) + count);
-		}
-
-		_availableTileTypes = new HashSet<int>(availableTileTypes.Where(tileType => tileType >= 0));
+		ArgumentNullException.ThrowIfNull(resourceSources);
+		ArgumentNullException.ThrowIfNull(environment);
 		var conditionsCopy = conditionEvidence.ToDictionary(evidence => evidence.Key);
 
 		SnapshotId = Interlocked.Increment(ref _nextSnapshotId);
 		CapturedAtUtc = DateTimeOffset.UtcNow;
-		InventoryCounts = new ReadOnlyDictionary<int, int>(inventoryCopy);
-		AvailableTileTypes = new ReadOnlyCollection<int>(_availableTileTypes.OrderBy(tileType => tileType).ToArray());
+		Resources = CraftResourceAggregateSnapshot.Create(resourceSources);
+		Environment = environment;
 		ConditionEvidence = new ReadOnlyDictionary<RecipeConditionKey, CapturedConditionEvidence>(conditionsCopy);
 		SourcePlayerIndex = sourcePlayerIndex;
 		IsSynthetic = isSynthetic;
@@ -70,9 +61,15 @@ public sealed class PlayerCraftContextSnapshot
 
 	public DateTimeOffset CapturedAtUtc { get; }
 
-	public IReadOnlyDictionary<int, int> InventoryCounts { get; }
+	public CraftResourceAggregateSnapshot Resources { get; }
 
-	public IReadOnlyList<int> AvailableTileTypes { get; }
+	public CraftEnvironmentSnapshot Environment { get; }
+
+	public IReadOnlyDictionary<int, int> AggregateResourceCounts => Resources.AggregateCounts;
+
+	public IReadOnlyList<CraftResourceSourceSnapshot> ResourceSources => Resources.Sources;
+
+	public IReadOnlyList<int> AvailableTileTypes => Environment.AvailableTileTypes;
 
 	public IReadOnlyDictionary<RecipeConditionKey, CapturedConditionEvidence> ConditionEvidence { get; }
 
@@ -82,25 +79,51 @@ public sealed class PlayerCraftContextSnapshot
 
 	public TimeSpan CaptureElapsed { get; }
 
-	public int TotalInventoryItemCount => InventoryCounts.Values.Sum();
+	public int TotalResourceItemCount => Resources.TotalResourceItemCount;
 
-	public int GetInventoryCount(int itemType) => InventoryCounts.TryGetValue(itemType, out int count) ? count : 0;
+	public int GetAvailableCount(int itemType) => Resources.GetAvailableCount(itemType);
 
-	public bool IsTileAvailable(int tileType) => _availableTileTypes.Contains(tileType);
+	public IReadOnlyList<CraftResourceEvidence> GetResourceEvidence(int itemType) => Resources.GetEvidence(itemType);
+
+	public bool IsTileAvailable(int tileType) => Environment.IsTileAvailable(tileType);
 
 	public bool TryGetConditionEvidence(RecipeConditionKey key, out CapturedConditionEvidence? evidence) =>
 		ConditionEvidence.TryGetValue(key, out evidence);
 
 	public static PlayerCraftContextSnapshot CreateSynthetic(
-		IEnumerable<KeyValuePair<int, int>> inventoryCounts,
+		IEnumerable<KeyValuePair<int, int>> resourceCounts,
 		IEnumerable<int>? availableTileTypes = null,
 		IEnumerable<CapturedConditionEvidence>? conditionEvidence = null,
 		TimeSpan? captureElapsed = null)
 	{
-		ArgumentNullException.ThrowIfNull(inventoryCounts);
+		ArgumentNullException.ThrowIfNull(resourceCounts);
+		var descriptor = new CraftResourceSourceDescriptor(
+			new CraftResourceSourceId("synthetic:default"),
+			CraftResourceSourceKind.Synthetic,
+			"Synthetic Default Source",
+			CraftResourceConsumptionCapability.EvidenceOnly);
 		return new PlayerCraftContextSnapshot(
-			inventoryCounts,
-			availableTileTypes ?? Array.Empty<int>(),
+			new[] { new CraftResourceSourceSnapshot(descriptor, resourceCounts) },
+			CraftEnvironmentSnapshot.CreateSingleSource(
+				new CraftEnvironmentSourceId("synthetic:stations"),
+				availableTileTypes ?? Array.Empty<int>()),
+			conditionEvidence ?? Array.Empty<CapturedConditionEvidence>(),
+			sourcePlayerIndex: null,
+			isSynthetic: true,
+			captureElapsed,
+			captureStartTimestamp: null);
+	}
+
+	public static PlayerCraftContextSnapshot CreateSynthetic(
+		IEnumerable<CraftResourceSourceSnapshot> resourceSources,
+		CraftEnvironmentSnapshot? environment = null,
+		IEnumerable<CapturedConditionEvidence>? conditionEvidence = null,
+		TimeSpan? captureElapsed = null)
+	{
+		ArgumentNullException.ThrowIfNull(resourceSources);
+		return new PlayerCraftContextSnapshot(
+			resourceSources,
+			environment ?? new CraftEnvironmentSnapshot(Array.Empty<CraftStationEvidence>()),
 			conditionEvidence ?? Array.Empty<CapturedConditionEvidence>(),
 			sourcePlayerIndex: null,
 			isSynthetic: true,
@@ -109,14 +132,14 @@ public sealed class PlayerCraftContextSnapshot
 	}
 
 	internal static PlayerCraftContextSnapshot CreateCaptured(
-		IEnumerable<KeyValuePair<int, int>> inventoryCounts,
-		IEnumerable<int> availableTileTypes,
+		IEnumerable<CraftResourceSourceSnapshot> resourceSources,
+		CraftEnvironmentSnapshot environment,
 		IEnumerable<CapturedConditionEvidence> conditionEvidence,
 		int sourcePlayerIndex,
 		long captureStartTimestamp) =>
 		new(
-			inventoryCounts,
-			availableTileTypes,
+			resourceSources,
+			environment,
 			conditionEvidence,
 			sourcePlayerIndex,
 			isSynthetic: false,

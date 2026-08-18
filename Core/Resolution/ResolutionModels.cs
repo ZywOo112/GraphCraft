@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using GraphCraft.Core.Context;
 using GraphCraft.Core.Graph;
+using GraphCraft.Core.Resources;
 
 namespace GraphCraft.Core.Resolution;
 
@@ -24,15 +25,13 @@ public enum IngredientResolutionMode
 	RecipeGroup
 }
 
-public sealed record MatchedInventoryItem(int ItemType, int Count);
-
 public sealed record IngredientResolution(
 	IngredientEdge Ingredient,
 	int RequiredAmount,
 	int AvailableAmount,
 	bool LocallySatisfied,
 	IngredientResolutionMode ResolutionMode,
-	IReadOnlyList<MatchedInventoryItem> MatchedAlternativeItems);
+	IReadOnlyList<CraftResourceEvidence> MatchedResources);
 
 public enum StationConstraintState
 {

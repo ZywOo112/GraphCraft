@@ -289,3 +289,117 @@ TargetCraftSubgraph + PlayerCraftContextSnapshot + existing GraphAnalysisResult
 - 当前只做 local recipe execution resolution，不处理共享资源分配、alternative selection、quantity propagation、backtracking 或 Missing Atomic Frontier。
 - `UnknownConstraint` 保守优先，任何未知 Condition 都阻止 `ReadyNow`。
 - 没有正式 UI；diagnostics 仅证明未来 visualization 所需数据已存在。
+
+## 2026-08-18 - Milestone 3.5
+
+### Motivation
+
+Milestone 3 的 Context 已与 Static Graph 分离，但资源数量仍由 `PlayerCraftContextCapture` 直接扫描 `player.inventory` 后形成单一字典。Resolution 不直接读取 Player，却无法表达多个来源、来源 provenance 或未来消费能力差异。Milestone 3.5 将这处绑定替换为 source abstraction，未重做 Graph/SCC/Subgraph/Overlay 语义。
+
+### Resource Source Architecture
+
+```text
+Vanilla / future third-party adapters
+-> ICraftResourceSource
+-> immutable CraftResourceSourceSnapshot(s)
+-> CraftResourceAggregateSnapshot
+   - AggregateCounts
+   - EvidenceByItemType (SourceId + SourceKind + ItemType + Count + Capability)
+-> PlayerCraftContextSnapshot
+-> ResolutionOverlayBuilder
+-> future Planner
+```
+
+- `CraftResourceSourceId` 由 adapter 提供稳定 identity。
+- `CraftResourceSourceKind` 是开放的 vendor-neutral value type；当前预定义 inventory、storage-network、synthetic，不包含 Mod 名称枚举。
+- `CraftResourceConsumptionCapability` 区分 `EvidenceOnly` 与未来需要 adapter transaction 的来源；Snapshot 本身没有 consume 方法。
+- `CraftResourceSourceSnapshot` 深拷贝某一来源的 ItemType/count。
+- `CraftResourceAggregateSnapshot` 对所有来源求和，同时保留逐 source/item evidence。
+- Resolution 仅调用 `GetAvailableCount` 与 `GetResourceEvidence`，不依赖 Vanilla、Magic Storage、ImproveGame 或任何具体来源。
+
+### Vanilla Adapters
+
+- `VanillaPlayerInventoryResourceSource` 是当前唯一 concrete resource source；只有该 adapter 读取 `player.inventory`。
+- `VanillaPlayerEnvironmentSource` 把 `player.adjTile` 转换为 `CraftEnvironmentSnapshot` station evidence。
+- `PlayerCraftContextCapture` 负责组合 Vanilla source 与可选 additional resource/environment sources，再捕获 Conditions。
+- Core Context、Resolution、Planner-facing model 均不引用 Player 或第三方 runtime object。
+
+### Aggregate and Provenance Semantics
+
+- Direct Item availability 为所有 source 中相同 ItemType 的总和，IngredientResolution 同时保存每个 source 的 evidence。
+- Recipe Group 对 accepted ItemTypes 的 union 跨全部 source 聚合；evidence 保留实际 alternative ItemType 与 SourceId，不会只剩总数。
+- `ItemResolution.CurrentCount` 现在代表 aggregate available count，而不是 Vanilla inventory count。
+- Source snapshot 与 aggregate snapshot 均不可变；source 后续变化只能由新 Capture 产生新 Context。
+
+### Station / Environment Boundary
+
+- `ICraftEnvironmentSource` 与 `CraftEnvironmentSnapshot.Merge` 为 station evidence 提供独立组合边界。
+- Resolution 继续只查询 `context.IsTileAvailable`；不再知道 tile evidence 是否来自 Vanilla adjacency、未来远程 station 或 storage network environment。
+- 当前仅接入 Vanilla `adjTile`，未实现任何第三方 virtual station。
+
+### Synthetic Tests A-G
+
+- Test A：单一 Vanilla-compatible source，Stone Block `30`，结果与 Milestone 3 一致：PASS。
+- Test B：Source A `3` + Source B `7`，aggregate `10`：PASS。
+- Test C：aggregate 后仍分别保留 A `3` / B `7` provenance：PASS。
+- Test D：required `8`，A `3` + B `7` 跨来源满足：PASS。
+- Test E：required `8`，A `3` + B `2` aggregate `5`，正确不足：PASS。
+- Test F：两个真实 Any Wood accepted ItemTypes 分布在两个 synthetic sources，aggregate `10`，RecipeGroup 与双 source/item evidence：PASS。
+- Test G：source capture 后把 live fake source 从 `3` 改为 `99`，旧 Context 保持 `3`，新 Capture 为 `99`：PASS。
+
+### Milestone 3 Regression
+
+Furnace regression contract 保持：
+
+1. 无材料 + 无 Work Bench：`BlockedByStation`。
+2. 材料完整 + 无 Work Bench：`BlockedByStation`。
+3. 材料完整 + Work Bench available：`ReadyNow`。
+4. 材料不完整 + Work Bench available：`NeedsIngredients`。
+
+原六个 direct/group/station/condition scenarios、snapshot immutability、canonical coverage、共享资源局部边界全部继续 PASS。`ReadyNow != RecursivelyCraftable` 未改变。
+
+### Runtime and Performance
+
+- tModLoader server load-session：SUCCESS。
+- PassedResourceSourceTests：`7`。
+- Resource source validation：`3.757 ms`。
+- Synthetic Context snapshot：`7.149 ms`。
+- Furnace overlay：`2.309 ms`。
+- Cell Phone overlay：`0.099 ms`。
+- Total synthetic validation：`33.478 ms`。
+- Validation process 在日志确认后已停止。
+
+### Files Created
+
+- `Core/Resources/CraftResourceSnapshots.cs`
+- `Core/Context/CraftEnvironmentSnapshot.cs`
+- `Systems/Adapters/VanillaPlayerInventoryResourceSource.cs`
+- `Systems/Adapters/VanillaPlayerEnvironmentSource.cs`
+- `Debug/CraftResourceSourceSyntheticTests.cs`
+
+### Files Modified
+
+- `Core/Context/PlayerCraftContextSnapshot.cs`：持有 aggregate resource/environment snapshots，不再持有 inventory-specific dictionary。
+- `Core/Resolution/ResolutionModels.cs`：IngredientResolution 保存 source-aware `CraftResourceEvidence`。
+- `Core/Resolution/ResolutionOverlayBuilder.cs`：direct/group availability 改为 aggregate/evidence API。
+- `Systems/PlayerCraftContextCapture.cs`：组合 resource/environment sources，不再直接扫描 inventory/adjTile。
+- `Debug/CraftResolutionDiagnostics.cs`：输出 source、aggregate、capability 和 provenance。
+- `Debug/DynamicResolutionSyntheticTests.cs`：接入 3.5 tests 并加强四组 Furnace regression。
+- `AGENTS.md`、`DEVLOG.md`：记录新依赖方向、transaction boundary 与兼容性限制。
+
+### Forward Compatibility
+
+- Magic Storage / ImproveGame 等未来集成应新增独立 adapter/provider，产生 `CraftResourceSourceSnapshot`；无需修改 CraftGraph、GraphAnalyzer、TargetSubgraphExtractor、Resolution 或 Planner 数量逻辑。
+- 如果第三方提供远程 station，则新增 `ICraftEnvironmentSource` adapter；Resolution station logic 不变。
+- Future Execution 必须按 provenance 的 SourceId 查找 live transaction adapter，并依据 `ConsumptionCapability` 决定是否可分配；snapshot 只提供 evidence，不能用于直接扣料。
+
+### Known Limitations
+
+- 当前没有全局 adapter registry；`PlayerCraftContextCapture` 通过 optional additional source 参数作为 composition seam。未来首次第三方集成可在 Systems/Integrations 层增加 registry，而不改变 Core/Resolution/Planner。
+- Consumption capability 只是数据边界；尚无 allocation、transaction provider、commit、rollback 或 race validation。
+- 当前唯一 concrete source/environment adapter 是 Vanilla player inventory/adjacent tiles；没有第三方依赖。
+- 多来源 aggregate 仍只表示局部 availability，不处理 Planner 的共享资源竞争或路径选择。
+
+### Build Result
+
+- `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。

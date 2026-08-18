@@ -19,6 +19,7 @@ internal sealed record DynamicResolutionSyntheticReport(
 	TimeSpan SyntheticContextElapsed,
 	TimeSpan FurnaceOverlayElapsed,
 	TimeSpan CellPhoneOverlayElapsed,
+	CraftResourceSourceSyntheticReport ResourceSourceReport,
 	TimeSpan TotalElapsed);
 
 internal static class DynamicResolutionSyntheticTests
@@ -42,7 +43,7 @@ internal static class DynamicResolutionSyntheticTests
 		var mutableInventory = new Dictionary<int, int> { [ItemID.StoneBlock] = 30 };
 		PlayerCraftContextSnapshot satisfiedContext = PlayerCraftContextSnapshot.CreateSynthetic(mutableInventory);
 		mutableInventory[ItemID.StoneBlock] = 0;
-		Assert(satisfiedContext.GetInventoryCount(ItemID.StoneBlock) == 30, "A snapshot changed after its source inventory dictionary was mutated.");
+		Assert(satisfiedContext.GetAvailableCount(ItemID.StoneBlock) == 30, "A snapshot changed after its source resource dictionary was mutated.");
 		ResolutionSnapshot satisfiedOverlay = ResolutionOverlayBuilder.Build(furnaceSubgraph, analysis, satisfiedContext);
 		IngredientResolution satisfiedStone = satisfiedOverlay.GetIngredientResolution(stoneRequirement);
 		AssertIngredient(satisfiedStone, required: 20, available: 30, locallySatisfied: true, "Scenario 1");
@@ -57,7 +58,7 @@ internal static class DynamicResolutionSyntheticTests
 		IngredientResolution groupResolution = groupOverlay.GetIngredientResolution(woodGroupRequirement);
 		AssertIngredient(groupResolution, required: 4, available: 10, locallySatisfied: true, "Scenario 3");
 		Assert(groupResolution.ResolutionMode == IngredientResolutionMode.RecipeGroup, "Scenario 3 did not use RecipeGroup mode.");
-		Assert(groupResolution.MatchedAlternativeItems.Any(evidence =>
+		Assert(groupResolution.MatchedResources.Any(evidence =>
 			evidence.ItemType == ItemID.BorealWood && evidence.Count == 10),
 			"Scenario 3 did not preserve Boreal Wood x10 evidence.");
 
@@ -69,6 +70,12 @@ internal static class DynamicResolutionSyntheticTests
 		RecipeResolution missingStationRecipe = missingStationOverlay.GetRecipeResolution(furnaceRecipe);
 		Assert(missingStationRecipe.State == RecipeLocalState.BlockedByStation, "Scenario 4 was not BlockedByStation.");
 		Assert(missingStationRecipe.Station.MissingTileTypes.Contains(TileID.WorkBenches), "Scenario 4 did not report the missing Work Bench tile.");
+		Assert(ResolutionOverlayBuilder.Build(
+			furnaceSubgraph,
+			analysis,
+			PlayerCraftContextSnapshot.CreateSynthetic(Array.Empty<KeyValuePair<int, int>>()))
+			.GetRecipeResolution(furnaceRecipe).State == RecipeLocalState.BlockedByStation,
+			"The no-material/no-station Furnace regression was not BlockedByStation.");
 
 		PlayerCraftContextSnapshot readyContext = PlayerCraftContextSnapshot.CreateSynthetic(
 			new Dictionary<int, int> {
@@ -131,6 +138,7 @@ internal static class DynamicResolutionSyntheticTests
 		CraftGraphStatistics afterStatistics = graph.GetStatistics();
 		Assert(beforeStatistics == afterStatistics, "Synthetic resolution changed CraftGraph statistics.");
 
+		CraftResourceSourceSyntheticReport resourceSourceReport = CraftResourceSourceSyntheticTests.Run(graph, furnaceSubgraph);
 		ResolutionSnapshot cellPhonePerformanceOverlay = ResolutionOverlayBuilder.Build(
 			cellPhoneSubgraph,
 			analysis,
@@ -144,6 +152,7 @@ internal static class DynamicResolutionSyntheticTests
 			satisfiedContext.CaptureElapsed,
 			satisfiedOverlay.Elapsed,
 			cellPhonePerformanceOverlay.Elapsed,
+			resourceSourceReport,
 			totalTimer.Elapsed);
 	}
 

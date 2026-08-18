@@ -36,16 +36,21 @@
 15. `ReadyNow` means one direct recipe execution is locally ready; it does not mean recursively craftable.
 16. Recursive craftability belongs to the Milestone 4 planner.
 17. Analysis and resolution must never mutate real player inventory.
+18. Available crafting resources are the aggregate of immutable resource-source snapshots, not a synonym for `player.inventory`.
+19. Aggregate counts must retain per-source and per-item provenance.
+20. Read visibility does not imply automatic consumption capability; future execution must use a separate adapter transaction boundary.
 
 ## 当前结构
 
 - `Core/Graph`：只读图模型、节点、边、约束和统计。
 - `Core/Analysis`：对已物化的二部 `CraftGraph` 执行 SCC、cycle 标注、凝聚图和拓扑排序。
 - `Core/Subgraphs`：从目标 `ItemNode` 反向提取共享节点、替代配方和环均被保留的依赖子图。
-- `Core/Context`：不可变的 inventory、station adjacency 和 Condition evidence 快照；不保存实时 Player 引用。
+- `Core/Context`：不可变的 aggregate resources、environment/station 与 Condition evidence 快照；不保存实时 Player 引用。
+- `Core/Resources`：resource source identity/kind/capability、immutable per-source snapshots、aggregate counts 和 provenance evidence。
 - `Core/Resolution`：把动态 context 覆盖到 canonical target subgraph nodes/edges，输出局部 resolution。
 - `Systems/CraftGraphBuilder`：把 setup 完成的 tModLoader recipes 转换为图。
-- `Systems/PlayerCraftContextCapture`：唯一的 Terraria Player adapter；只读普通 `player.inventory`、`adjTile` 和图中 Condition evaluators。
+- `Systems/PlayerCraftContextCapture`：组合 resource/environment adapters 并捕获图中 Condition evidence；不自行解释具体 storage。
+- `Systems/Adapters`：Vanilla inventory 与 environment 的 concrete source adapters；未来第三方集成也应留在 adapter/integration 层。
 - `Systems/CraftGraphSystem`：在 `PostSetupRecipes` 构建并发布静态图与分析结果，并执行加载期验证。
 - `Debug/CraftGraphDiagnostics`：只读取 `CraftGraph`、分析结果和目标子图，输出结构化统计与图文本。
 - `Debug/GraphCraftStateCommand`：`/gcstate <itemId>` 手动调试入口，严格走 Capture → Resolve → Format pipeline。
@@ -66,20 +71,30 @@
 
 ## 当前状态
 
-- 已完成：Milestone 0、Milestone 1（Materialized Static CraftGraph）、Milestone 2（GraphAnalyzer + TargetSubgraphExtractor）和 Milestone 3（Dynamic Resolution Overlay）。
-- 已验证：不可变 synthetic context、direct/group ingredient resolution、station/condition states、canonical overlay coverage、共享库存边界和真实 tModLoader 加载。
+- 已完成：Milestone 0、Milestone 1、Milestone 2、Milestone 3，以及 Milestone 3.5（Craft Resource Source Abstraction）。
+- 已验证：单/多来源 aggregation、per-source provenance、跨来源 ingredient、multi-source Recipe Group、source isolation、Milestone 3 全回归和真实 tModLoader 加载。
 - 真实 Player capture 通过 `/gcstate <itemId>` 提供；自动化环境不能进入玩家世界，因此仍需游戏内手动验证。
 - 未开始：recursive planner、VirtualInventory、global allocation、material consumption、executor 或正式 UI。
 
 ## Milestone 3 约束
 
 - `PlayerCraftContextSnapshot` 创建后必须与后续 Player 变化隔离，不得保留 Player 或实时 callback。
-- MVP inventory scope 仅为普通 `player.inventory`；不包含 Chest、Bank、Safe、Defender's Forge、Void Bag 或外部 storage。
+- 当前 concrete resource adapter scope 仅为普通 `player.inventory`；不包含 Chest、Bank、Safe、Defender's Forge、Void Bag 或外部 storage。
 - Recipe Group requirement 必须聚合全部 accepted item types，并保留每种实际匹配物品的数量 evidence。
 - `Player.adjTile` 是 station availability 的事实来源；其中已包含 tModLoader `AdjTiles` 等价关系。多个 required tiles 按 Terraria 的 AND 语义逐项满足。
 - Recipe Conditions 在 Capture 时使用官方 `Condition.IsMet()` 语义求值；缺少 evaluator、缺少 evidence 或求值异常必须为 `Unknown`。
 - `ResolutionSnapshot` 必须完整覆盖 source subgraph 的 canonical ItemNodes、IngredientEdges 和 RecipeNodes，并复用已有 SCC mapping。
 - 禁止把 `Owned`、count、station 或 condition 当前状态写入 `ItemNode`/`RecipeNode`。
+
+## Milestone 3.5 约束
+
+- `ICraftResourceSource` 只负责 Discover/Snapshot/Read；source snapshot 不得泄漏 Player、storage network 或第三方 runtime object。
+- `CraftResourceAggregateSnapshot` 是 Resolution/Planner 的数量入口；核心不得扫描具体 inventory/storage。
+- `CraftResourceEvidence` 必须保留 SourceId、vendor-neutral SourceKind、ItemType、count 与 consumption capability。
+- `SourceKind` 只表示稳定类别，不允许演变为第三方 Mod 名称枚举。
+- 当前 concrete resource adapter 仅为 Vanilla Player Inventory；不得增加第三方 Mod dependency。
+- station availability 通过可合并 `ICraftEnvironmentSource`/`CraftEnvironmentSnapshot` 提供；Resolution 不得依赖 `player.adjTile`。
+- 当前不实现 consume、allocation、commit、rollback 或 race validation。未来 execution 必须按 SourceId 找到独立 transaction adapter，而不是修改 snapshot。
 
 ## Future Visualization Direction
 
@@ -89,4 +104,4 @@
 
 ## 下一里程碑
 
-等待用户确认后进入 Milestone 4：Graph-Constrained Craft Planner。不要自行开始 planner、execution 或 UI。
+Milestone 3.5 已为 Planner 提供 aggregate availability 与 provenance。等待用户确认后进入 Milestone 4：Graph-Constrained Craft Planner；不要自行开始 execution 或 UI。

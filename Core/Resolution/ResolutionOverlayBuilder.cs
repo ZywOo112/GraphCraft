@@ -6,6 +6,7 @@ using System.Linq;
 using GraphCraft.Core.Analysis;
 using GraphCraft.Core.Context;
 using GraphCraft.Core.Graph;
+using GraphCraft.Core.Resources;
 using GraphCraft.Core.Subgraphs;
 
 namespace GraphCraft.Core.Resolution;
@@ -24,7 +25,7 @@ public static class ResolutionOverlayBuilder
 		var timer = Stopwatch.StartNew();
 		var itemResolutions = new Dictionary<ItemNode, ItemResolution>();
 		foreach (ItemNode item in subgraph.ItemNodes) {
-			int count = context.GetInventoryCount(item.ItemType);
+			int count = context.GetAvailableCount(item.ItemType);
 			ItemResolutionState state = count > 0
 				? ItemResolutionState.Owned
 				: item.Classification == ItemClassification.Atomic
@@ -75,14 +76,15 @@ public static class ResolutionOverlayBuilder
 		PlayerCraftContextSnapshot context)
 	{
 		if (!ingredient.AcceptsRecipeGroup) {
-			int available = context.GetInventoryCount(ingredient.Source.ItemType);
+			IReadOnlyList<CraftResourceEvidence> evidence = context.GetResourceEvidence(ingredient.Source.ItemType);
+			int available = context.GetAvailableCount(ingredient.Source.ItemType);
 			return new IngredientResolution(
 				ingredient,
 				ingredient.RequiredAmount,
 				available,
 				available >= ingredient.RequiredAmount,
 				IngredientResolutionMode.DirectItem,
-				Array.Empty<MatchedInventoryItem>());
+				evidence);
 		}
 
 		int[] acceptedItemTypes = ingredient.AcceptedRecipeGroups
@@ -90,18 +92,19 @@ public static class ResolutionOverlayBuilder
 			.Distinct()
 			.OrderBy(itemType => itemType)
 			.ToArray();
-		MatchedInventoryItem[] matchedItems = acceptedItemTypes
-			.Select(itemType => new MatchedInventoryItem(itemType, context.GetInventoryCount(itemType)))
-			.Where(evidence => evidence.Count > 0)
+		CraftResourceEvidence[] matchedResources = acceptedItemTypes
+			.SelectMany(context.GetResourceEvidence)
+			.OrderBy(evidence => evidence.ItemType)
+			.ThenBy(evidence => evidence.SourceId.Value, StringComparer.Ordinal)
 			.ToArray();
-		int groupAvailable = matchedItems.Sum(evidence => evidence.Count);
+		int groupAvailable = matchedResources.Sum(evidence => evidence.Count);
 		return new IngredientResolution(
 			ingredient,
 			ingredient.RequiredAmount,
 			groupAvailable,
 			groupAvailable >= ingredient.RequiredAmount,
 			IngredientResolutionMode.RecipeGroup,
-			new ReadOnlyCollection<MatchedInventoryItem>(matchedItems));
+			new ReadOnlyCollection<CraftResourceEvidence>(matchedResources));
 	}
 
 	private static StationConstraintResolution ResolveStationConstraint(
