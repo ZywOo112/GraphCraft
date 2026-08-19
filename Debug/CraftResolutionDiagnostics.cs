@@ -30,17 +30,18 @@ internal static class CraftResolutionDiagnostics
 		  Test 14 Explicit bad local choice does not backtrack: PASS
 		  Test 15 Explicit good local choice succeeds: PASS
 		  Test 16 Nested choice provenance: PASS
-		  Test 17 Viable + nested choice remains unresolved: PASS
-		  Test 18 Viable + Recipe Group deferred remains unresolved: PASS
-		  Test 19 All failed candidates preserve frontiers: PASS
+		  Test 17 Viable + nested choice auto-selects viable: PASS
+		  Test 18 Viable + Recipe Group deferred auto-selects viable: PASS
+		  Test 19 Failed + blocked candidates preserve frontiers: PASS
 		  Test 20 Deferred/blocked is not proven impossible: PASS
 		  Test 21 Unique producer regression: PASS
 		  Test 22 Zero producer regression: PASS
 		  Test 23 Snapshot/provenance/preview immutability: PASS
 		  Test 24 Decision identity/order/status/preview determinism: PASS
-		  Choice example: id={choice.DecisionId}, state={choice.State}, candidates={choice.Candidates.Count}
+		  Test 25 Two viable + deferred exposes only viable user selections: PASS
+		  Choice example: id={choice.DecisionId}, state={choice.State}, candidates={choice.Candidates.Count}, selectable={choice.UserSelectableCandidates.Count}
 		  Explicit example: status={report.ExplicitChoiceExample.Status}, applied={report.ExplicitChoiceExample.AppliedChoices.Count}, steps={report.ExplicitChoiceExample.Steps.Count}
-		  PassedRequiredTests: {report.PassedRequiredTestCount}/24
+		  PassedRequiredTests: {report.PassedRequiredTestCount}/25
 		  AlternativeDecisionValidationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}
 		""";
 	}

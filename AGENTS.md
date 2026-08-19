@@ -64,9 +64,9 @@
 43. Planner determines supported feasibility; it does not invent or infer player preference.
 44. Every alternative Recipe candidate is evaluated from the same immutable decision-input Ledger branch.
 45. Candidate evaluation order and result order are canonical and deterministic, but ordering never implies preference.
-46. Exactly one fully viable candidate may be auto-selected only when every other candidate is proven failed or blocked.
+46. Exactly one fully viable candidate is auto-selected regardless of whether other candidates are failed, blocked, deferred, or require nested user choice.
 47. Two or more fully viable candidates produce structured `UserChoiceRequired`; no first-success, scoring, or optimization policy may select one.
-48. `RequiresUserChoice` and `Deferred` are not failure and must prevent a claim that another candidate is the only possible route.
+48. `RequiresUserChoice` and `Deferred` are not failure and remain in decision provenance, but they do not block an already confirmed unique fully viable route. With zero fully viable routes, nested user choice propagates before deferred/failure semantics.
 49. Deferred Planner capability is not evidence that a candidate is impossible.
 50. Candidate preview steps are domain evidence only; unresolved decisions publish no committed plan steps.
 51. Explicit Recipe choices are request-scoped constraints, validated against the canonical candidate set, and applied by deterministic re-planning.
@@ -160,7 +160,8 @@
 - Root Recipe selection remains caller-owned. Alternative evaluation applies only to missing exact-item dependencies inside the selected root plan.
 - All included canonical producers are evaluated in ascending `RecipeIndex` order from one shared immutable decision-input Ledger.
 - Candidate states remain distinct: `FullyViable`, `RequiresUserChoice`, `Failed`, `Blocked`, `Deferred`, and `NotApplicable`.
-- Multiple fully viable candidates return `UserChoiceRequired`; exactly one is auto-selected only when all others are proven failed or blocked.
+- Two or more fully viable candidates return `UserChoiceRequired`; exactly one fully viable candidate is always auto-selected while every other candidate status remains in provenance.
+- `UserSelectableCandidates` contains only confirmed `FullyViable` candidates. It is empty when `UserChoiceRequired` merely propagates a nested choice and no outer candidate is yet fully viable.
 - Explicit choices use deterministic decision identity plus canonical `RecipeNode` identity and re-plan without a mutable suspended Planner session.
 - Recipe Group allocation remains deferred. No global lookahead, branch scoring, optimization, general backtracking, source allocation, execution, or UI is present.
 - The old Milestone 4.2 multiple-producer deferral rule is superseded by this section; its remaining unique-producer, Ledger, frontier, cycle, and depth invariants still apply.

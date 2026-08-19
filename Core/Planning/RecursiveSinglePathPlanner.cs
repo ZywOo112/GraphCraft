@@ -350,7 +350,7 @@ public static class RecursiveSinglePathPlanner
 		var fullyViable = evaluated.Where(entry => entry.Result.Status == AlternativeCandidateStatus.FullyViable).ToArray();
 		bool hasRequiresChoice = evaluated.Any(entry => entry.Result.Status == AlternativeCandidateStatus.RequiresUserChoice);
 		bool hasDeferred = evaluated.Any(entry => entry.Result.Status == AlternativeCandidateStatus.Deferred);
-		if (fullyViable.Length == 1 && !hasRequiresChoice && !hasDeferred) {
+		if (fullyViable.Length == 1) {
 			var decision = new AlternativeDecision(
 				decisionId,
 				AlternativeDecisionState.AutoSelectedOnlyViable,
@@ -373,7 +373,7 @@ public static class RecursiveSinglePathPlanner
 			unresolvedState = AlternativeDecisionState.UserChoiceRequired;
 			unresolvedStatus = RecursivePlanStatus.UserChoiceRequired;
 		}
-		else if (hasRequiresChoice || hasDeferred) {
+		else if (hasDeferred) {
 			unresolvedState = AlternativeDecisionState.UnresolvedDeferred;
 			unresolvedStatus = RecursivePlanStatus.AlternativeResolutionDeferred;
 		}

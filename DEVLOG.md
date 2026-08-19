@@ -619,9 +619,9 @@ Frontier 保留 item、requirement、required/available/deficit、blocking recip
 ### Decision and Candidate Semantics
 
 - Candidate outcomes are structured as `FullyViable`, `RequiresUserChoice`, `Failed`, `Blocked`, `Deferred`, or `NotApplicable`.
-- Exactly one fully viable candidate is auto-selected only when all other candidates are proven failed or blocked.
+- Exactly one fully viable candidate is auto-selected even when other candidates are failed, blocked, deferred, or require nested user choice.
 - Two or more fully viable candidates return `UserChoiceRequired`; canonical order is deterministic presentation/evaluation order, not preference.
-- A fully viable candidate beside a `RequiresUserChoice` or `Deferred` candidate remains unresolved. Deferred capability is never presented as impossible.
+- `RequiresUserChoice` and `Deferred` remain visible provenance rather than failure, but they do not block a unique confirmed fully viable route. Deferred capability is never presented as impossible.
 - Candidate previews retain logical steps, quantities, reservations, production, frontiers, and nested decision evidence without becoming committed plan steps.
 
 ### Explicit Choice Boundary
@@ -656,6 +656,25 @@ Frontier 保留 item、requirement、required/available/deficit、blocking recip
 - A future Recipe Group phase can introduce a sibling resource-choice contract without changing Recipe decision identity or candidate preview semantics.
 - General backtracking can later treat automatic and explicit choices differently: automatic decisions may become search branches, while explicit choices remain hard constraints unless the caller asks to revise them.
 - Largest current risks are decision identity across reconstructed/load sessions, combinatorial cost once general search is introduced, and clearly separating deferred capability from proven failure as more decision kinds are added.
+
+## 2026-08-19 - Milestone 4.3 Follow-up: Alternative Decision Aggregation Semantics
+
+### Focused Correction
+
+- `FullyViable >= 2` returns `UserChoiceRequired`; the structured `UserSelectableCandidates` set contains only those confirmed fully viable candidates.
+- `FullyViable == 1` always auto-selects the unique complete route. Failed, blocked, deferred, and nested-choice candidates remain visible in provenance but no longer add unnecessary user interaction.
+- `FullyViable == 0` propagates `UserChoiceRequired` when a candidate requires nested choice; otherwise deferred capability precedes the existing no-viable failure/blocked result.
+- Candidate evaluation, immutable branch isolation, explicit-choice validation/no-fallback behavior, canonical ordering, previews, graph constraints, and Resolution boundaries are unchanged.
+- No UI, Recipe Group allocation, general backtracking, scoring, optimization, execution, or source allocation was added.
+
+### Validation
+
+- Expanded Milestone 4.3 synthetic validation to 25 scenarios, explicitly covering unique viable routes beside deferred/nested-choice candidates and two viable routes beside a deferred provenance-only candidate.
+- Follow-up `dotnet build GraphCraft.csproj --nologo`: SUCCESS, 0 warnings / 0 errors.
+- Real tModLoader `1.4.4.9+2026.06.3.6` server load-session: SUCCESS; `Mod Load Completed in 20552ms`.
+- Milestone 4.1: `14/14` PASS; Milestone 4.2: `22/22` PASS; corrected Milestone 4.3: `25/25` PASS.
+- Follow-up alternative-decision validation elapsed: `19.286 ms`; all prior graph, analysis, subgraph, resolution, resource-source, Ledger, recursion, explicit-choice, and immutability regressions passed.
+- The validation process was stopped after the complete report; no world was entered and no real resource was consumed or modified.
 
 ### Historical Milestone 4.2 Build and Runtime Result
 

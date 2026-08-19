@@ -161,6 +161,10 @@ public sealed class AlternativeDecision
 		Candidates = new ReadOnlyCollection<AlternativeCandidateResult>(candidates
 			.OrderBy(candidate => candidate.Recipe.RecipeIndex)
 			.ToArray());
+		UserSelectableCandidates = new ReadOnlyCollection<AlternativeCandidateResult>(
+			State == AlternativeDecisionState.UserChoiceRequired
+				? Candidates.Where(candidate => candidate.Status == AlternativeCandidateStatus.FullyViable).ToArray()
+				: Array.Empty<AlternativeCandidateResult>());
 		SelectedRecipe = selectedRecipe;
 	}
 
@@ -185,6 +189,8 @@ public sealed class AlternativeDecision
 	public IReadOnlyList<PlanningPathEntry> DependencyPath { get; }
 
 	public IReadOnlyList<AlternativeCandidateResult> Candidates { get; }
+
+	public IReadOnlyList<AlternativeCandidateResult> UserSelectableCandidates { get; }
 
 	public RecipeNode? SelectedRecipe { get; }
 
