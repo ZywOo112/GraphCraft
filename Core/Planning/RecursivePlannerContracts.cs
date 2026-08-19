@@ -35,7 +35,12 @@ public enum RecursivePlanStatus
 	BlockedByCondition,
 	UnknownConstraint,
 	CycleBoundary,
-	PlanningDepthBoundary
+	PlanningDepthBoundary,
+	UserChoiceRequired,
+	AlternativeResolutionDeferred,
+	NoViableAlternative,
+	InvalidExplicitChoice,
+	ExplicitChoiceFailed
 }
 
 public enum PlanningFrontierKind
@@ -50,13 +55,15 @@ public enum PlanningFrontierKind
 	BlockedByCondition,
 	UnknownConstraint,
 	CycleBoundary,
-	PlanningDepthBoundary
+	PlanningDepthBoundary,
+	InvalidExplicitChoice
 }
 
 public sealed record PlanningPathEntry(
 	int Depth,
 	RecipeNode Recipe,
-	long RequestedOutputQuantity);
+	long RequestedOutputQuantity,
+	int? IncomingIngredientOrdinal);
 
 public sealed class PlanningFrontier
 {
@@ -178,7 +185,8 @@ public sealed class RecursiveRecipePlanningRequest
 		RecipeNode selectedRootRecipe,
 		int requiredOutputQuantity,
 		VirtualResourceLedger ledger,
-		RecursivePlanningLimits? limits = null)
+		RecursivePlanningLimits? limits = null,
+		IEnumerable<ExplicitRecipeChoice>? explicitChoices = null)
 	{
 		ArgumentNullException.ThrowIfNull(targetSubgraph);
 		ArgumentNullException.ThrowIfNull(resolution);
@@ -197,6 +205,13 @@ public sealed class RecursiveRecipePlanningRequest
 		RequiredOutputQuantity = requiredOutputQuantity;
 		Ledger = ledger;
 		Limits = limits ?? new RecursivePlanningLimits();
+		var choices = new Dictionary<AlternativeDecisionId, ExplicitRecipeChoice>();
+		foreach (ExplicitRecipeChoice choice in explicitChoices ?? Array.Empty<ExplicitRecipeChoice>()) {
+			ArgumentNullException.ThrowIfNull(choice);
+			if (!choices.TryAdd(choice.DecisionId, choice))
+				throw new ArgumentException($"Duplicate explicit choice for decision {choice.DecisionId}.", nameof(explicitChoices));
+		}
+		ExplicitChoices = new ReadOnlyDictionary<AlternativeDecisionId, ExplicitRecipeChoice>(choices);
 	}
 
 	public TargetCraftSubgraph TargetSubgraph { get; }
@@ -210,6 +225,8 @@ public sealed class RecursiveRecipePlanningRequest
 	public VirtualResourceLedger Ledger { get; }
 
 	public RecursivePlanningLimits Limits { get; }
+
+	public IReadOnlyDictionary<AlternativeDecisionId, ExplicitRecipeChoice> ExplicitChoices { get; }
 }
 
 public sealed class RecursiveRecipePlanResult
@@ -223,7 +240,9 @@ public sealed class RecursiveRecipePlanResult
 		IReadOnlyList<PlannedCraftStep> steps,
 		IReadOnlyList<VirtualResourceReservation> reservations,
 		IReadOnlyList<VirtualResourceProduction> productions,
-		PlanningFrontier? frontier)
+		PlanningFrontier? frontier,
+		IReadOnlyList<AlternativeDecision>? decisions = null,
+		IReadOnlyList<RecipeChoiceApplication>? appliedChoices = null)
 	{
 		SelectedRootRecipe = selectedRootRecipe;
 		RequestedOutputQuantity = requestedOutputQuantity;
@@ -234,6 +253,8 @@ public sealed class RecursiveRecipePlanResult
 		Reservations = new ReadOnlyCollection<VirtualResourceReservation>(reservations.ToArray());
 		Productions = new ReadOnlyCollection<VirtualResourceProduction>(productions.ToArray());
 		Frontier = frontier;
+		Decisions = new ReadOnlyCollection<AlternativeDecision>((decisions ?? Array.Empty<AlternativeDecision>()).ToArray());
+		AppliedChoices = new ReadOnlyCollection<RecipeChoiceApplication>((appliedChoices ?? Array.Empty<RecipeChoiceApplication>()).ToArray());
 	}
 
 	public RecipeNode SelectedRootRecipe { get; }
@@ -255,4 +276,10 @@ public sealed class RecursiveRecipePlanResult
 	public IReadOnlyList<VirtualResourceProduction> Productions { get; }
 
 	public PlanningFrontier? Frontier { get; }
+
+	public IReadOnlyList<AlternativeDecision> Decisions { get; }
+
+	public IReadOnlyList<RecipeChoiceApplication> AppliedChoices { get; }
+
+	public AlternativeDecision? PendingDecision => Decisions.LastOrDefault(decision => !decision.IsResolved);
 }

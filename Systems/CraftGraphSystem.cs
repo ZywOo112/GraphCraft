@@ -64,6 +64,9 @@ public sealed class CraftGraphSystem : ModSystem
 
 		RecursivePlannerSyntheticReport recursiveReport = RecursivePlannerSyntheticTests.Run();
 		Mod.Logger.Info(CraftResolutionDiagnostics.FormatRecursivePlannerValidation(recursiveReport));
+
+		AlternativeDecisionSyntheticReport alternativeReport = AlternativeDecisionSyntheticTests.Run();
+		Mod.Logger.Info(CraftResolutionDiagnostics.FormatAlternativeDecisionValidation(alternativeReport));
 	}
 
 	public override void Unload()

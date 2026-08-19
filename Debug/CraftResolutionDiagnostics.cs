@@ -8,6 +8,43 @@ namespace GraphCraft.Debug;
 
 internal static class CraftResolutionDiagnostics
 {
+	public static string FormatAlternativeDecisionValidation(AlternativeDecisionSyntheticReport report)
+	{
+		AlternativeDecision choice = report.ChoiceExample.PendingDecision
+			?? throw new InvalidOperationException("Milestone 4.3 diagnostic example is missing its decision.");
+		return $"""
+		[GraphCraft] Milestone 4.3 alternative branching and explicit choice validation
+		  Test 1 One viable + one failed auto-select: PASS
+		  Test 2 Two viable require user choice: PASS
+		  Test 3 Three viable preserve canonical order: PASS
+		  Test 4 Failed reservation branch isolation: PASS
+		  Test 5 Failed virtual-production branch isolation: PASS
+		  Test 6 Explicit second-candidate selection: PASS
+		  Test 7 Invalid explicit choice rejected: PASS
+		  Test 8 Explicit failure has no silent fallback: PASS
+		  Test 9 Candidate order independent of insertion: PASS
+		  Test 10 Blocked + success auto-select: PASS
+		  Test 11 Recursive candidate fully evaluated: PASS
+		  Test 12 ReadyNow respects evolved Ledger: PASS
+		  Test 13 Local alternatives exposed before later sibling: PASS
+		  Test 14 Explicit bad local choice does not backtrack: PASS
+		  Test 15 Explicit good local choice succeeds: PASS
+		  Test 16 Nested choice provenance: PASS
+		  Test 17 Viable + nested choice remains unresolved: PASS
+		  Test 18 Viable + Recipe Group deferred remains unresolved: PASS
+		  Test 19 All failed candidates preserve frontiers: PASS
+		  Test 20 Deferred/blocked is not proven impossible: PASS
+		  Test 21 Unique producer regression: PASS
+		  Test 22 Zero producer regression: PASS
+		  Test 23 Snapshot/provenance/preview immutability: PASS
+		  Test 24 Decision identity/order/status/preview determinism: PASS
+		  Choice example: id={choice.DecisionId}, state={choice.State}, candidates={choice.Candidates.Count}
+		  Explicit example: status={report.ExplicitChoiceExample.Status}, applied={report.ExplicitChoiceExample.AppliedChoices.Count}, steps={report.ExplicitChoiceExample.Steps.Count}
+		  PassedRequiredTests: {report.PassedRequiredTestCount}/24
+		  AlternativeDecisionValidationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}
+		""";
+	}
+
 	public static string FormatRecursivePlannerValidation(RecursivePlannerSyntheticReport report)
 	{
 		RecursiveRecipePlanResult example = report.OneLevelExample;
@@ -20,8 +57,8 @@ internal static class CraftResolutionDiagnostics
 		  Test 5 Shared recursive base resource cannot double-count: PASS
 		  Test 6 Recursive root failure atomicity: PASS
 		  Test 7 Zero producer structured frontier: PASS
-		  Test 8 Multiple producers deferred: PASS
-		  Test 9 One ReadyNow among alternatives still deferred: PASS
+		  Test 8 Multiple fully viable producers require user choice: PASS
+		  Test 9 One viable plus one blocked producer auto-selected: PASS
 		  Test 10 Recipe Group remains deferred: PASS
 		  Test 11 NeedsIngredients recursively resolved: PASS
 		  Test 12 ReadyNow does not override evolved Ledger: PASS
@@ -39,7 +76,7 @@ internal static class CraftResolutionDiagnostics
 		  Example status: {example.Status}, steps={example.Steps.Count}, reservations={example.Reservations.Count}, productions={example.Productions.Count}
 		  Example step order: {string.Join(" -> ", example.Steps.Select(step => $"Recipe #{step.Recipe.RecipeIndex} x{step.CraftRepetitions}"))}
 		  Example intermediate balance: initial={example.ResultLedger.GetBalance(302).InitialQuantity}, produced={example.ResultLedger.GetBalance(302).PlannedProductionQuantity}, reserved={example.ResultLedger.GetBalance(302).ReservedQuantity}, remaining={example.ResultLedger.GetBalance(302).RemainingQuantity}
-		  Frontier example: {report.FrontierExample.Frontier?.Kind}, candidates={report.FrontierExample.Frontier?.CandidateProducers.Count}
+		  Decision example: {report.FrontierExample.PendingDecision?.State}, candidates={report.FrontierExample.PendingDecision?.Candidates.Count}
 		  PassedRequiredTests: {report.PassedRequiredTestCount}/22
 		  RecursivePlannerValidationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}
 		""";

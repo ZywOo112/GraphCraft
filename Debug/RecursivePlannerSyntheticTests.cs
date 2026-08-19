@@ -166,9 +166,9 @@ internal static class RecursivePlannerSyntheticTests
 		builder.AddRecipe(362, 1, RecipeLocalState.ReadyNow, true, I(363, 1));
 		RecipeNode root = builder.AddRecipe(364, 1, RecipeLocalState.NeedsIngredients, true, I(362, 1));
 		RecursiveRecipePlanResult result = Plan(builder.Build(root, Context((361, 1), (363, 1))));
-		Assert(result.Status == RecursivePlanStatus.AlternativeProducerDeferred && result.Frontier?.CandidateProducers.Count == 2,
-			"Test 8 did not defer multiple producers.");
-		Assert(result.Steps.Count == 0 && result.Productions.Count == 0, "Test 8 selected or attempted an alternative producer.");
+		Assert(result.Status == RecursivePlanStatus.UserChoiceRequired && result.PendingDecision?.Candidates.Count == 2,
+			"Test 8 did not expose the two viable producers as a user decision.");
+		Assert(result.Steps.Count == 0 && result.Productions.Count == 0, "Test 8 committed a candidate preview.");
 		return result;
 	}
 
@@ -179,8 +179,8 @@ internal static class RecursivePlannerSyntheticTests
 		builder.AddRecipe(372, 1, RecipeLocalState.BlockedByStation, true, I(373, 1));
 		RecipeNode root = builder.AddRecipe(374, 1, RecipeLocalState.NeedsIngredients, true, I(372, 1));
 		RecursiveRecipePlanResult result = Plan(builder.Build(root, Context((371, 1), (373, 1))));
-		Assert(result.Status == RecursivePlanStatus.AlternativeProducerDeferred && result.Frontier?.CandidateProducers.Count == 2,
-			"Test 9 selected the apparently ReadyNow producer.");
+		Assert(result.Succeeded && result.AppliedChoices.Single().Kind == RecipeChoiceApplicationKind.AutoSelectedOnlyViable,
+			"Test 9 did not auto-select the only fully viable producer after proving the other blocked.");
 	}
 
 	private static void TestRecipeGroupStillDeferred()
@@ -374,7 +374,7 @@ internal static class RecursivePlannerSyntheticTests
 
 	private static IngredientSpec I(int itemType, int amount, bool group = false) => new(itemType, amount, group);
 
-	private static PlayerCraftContextSnapshot Context(params (int ItemType, int Count)[] resources) =>
+	internal static PlayerCraftContextSnapshot Context(params (int ItemType, int Count)[] resources) =>
 		PlayerCraftContextSnapshot.CreateSynthetic(resources.Select(resource =>
 			new KeyValuePair<int, int>(resource.ItemType, resource.Count)));
 
@@ -423,15 +423,15 @@ internal static class RecursivePlannerSyntheticTests
 			throw new InvalidOperationException($"Recursive planner synthetic validation failed: {message}");
 	}
 
-	private readonly record struct IngredientSpec(int ItemType, int Amount, bool IsGroup);
+	internal readonly record struct IngredientSpec(int ItemType, int Amount, bool IsGroup);
 
-	private sealed record Fixture(
+	internal sealed record Fixture(
 		TargetCraftSubgraph Subgraph,
 		ResolutionSnapshot Resolution,
 		RecipeNode Root,
 		VirtualResourceLedger Ledger);
 
-	private sealed class SyntheticGraphBuilder
+	internal sealed class SyntheticGraphBuilder
 	{
 		private static int _nextRecipeIndex = -42000;
 		private readonly Dictionary<int, ItemNode> _items = new();
@@ -445,14 +445,34 @@ internal static class RecursivePlannerSyntheticTests
 			bool included,
 			params IngredientSpec[] ingredients)
 		{
+			return AddRecipeCore(_nextRecipeIndex--, resultItemType, outputStack, state, included, ingredients);
+		}
+
+		public RecipeNode AddRecipeWithIndex(
+			int recipeIndex,
+			int resultItemType,
+			int outputStack,
+			RecipeLocalState state,
+			bool included,
+			params IngredientSpec[] ingredients) =>
+			AddRecipeCore(recipeIndex, resultItemType, outputStack, state, included, ingredients);
+
+		private RecipeNode AddRecipeCore(
+			int recipeIndex,
+			int resultItemType,
+			int outputStack,
+			RecipeLocalState state,
+			bool included,
+			IReadOnlyList<IngredientSpec> ingredients)
+		{
 			ItemNode result = Item(resultItemType);
 			var recipe = new RecipeNode(
-				_nextRecipeIndex--,
+				recipeIndex,
 				result,
 				outputStack,
 				new RecipeConstraintSet(Array.Empty<int>(), Array.Empty<RecipeConditionInfo>()));
 			result.AddProducer(recipe);
-			for (int ordinal = 0; ordinal < ingredients.Length; ordinal++) {
+			for (int ordinal = 0; ordinal < ingredients.Count; ordinal++) {
 				IngredientSpec spec = ingredients[ordinal];
 				ItemNode source = Item(spec.ItemType);
 				IReadOnlyList<RecipeGroupInfo> groups = spec.IsGroup

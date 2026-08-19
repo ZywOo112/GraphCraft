@@ -19,13 +19,13 @@ public static class RecursiveSinglePathPlanner
 				requirement: null,
 				request.SelectedRootRecipe.Result,
 				request.RequiredOutputQuantity,
-				availableQuantity: request.Ledger.GetBalance(request.SelectedRootRecipe.Result.ItemType).RemainingQuantity,
-				deficitQuantity: request.RequiredOutputQuantity,
+				request.Ledger.GetBalance(request.SelectedRootRecipe.Result.ItemType).RemainingQuantity,
+				request.RequiredOutputQuantity,
 				depth: 0,
 				Array.Empty<PlanningPathEntry>(),
 				Array.Empty<RecipeNode>(),
 				resolutionEvidence: null);
-			return FailureResult(request, RecursivePlanStatus.RecipeOutsideTargetSubgraph, frontier);
+			return FailureResult(request, Attempt.Failure(RecursivePlanStatus.RecipeOutsideTargetSubgraph, request.Ledger, frontier));
 		}
 
 		Attempt attempt = PlanRecipe(
@@ -34,9 +34,10 @@ public static class RecursiveSinglePathPlanner
 			request.RequiredOutputQuantity,
 			request.Ledger,
 			depth: 0,
+			incomingIngredientOrdinal: null,
 			Array.Empty<PlanningPathEntry>());
 		if (!attempt.Succeeded)
-			return FailureResult(request, attempt.Status, attempt.Frontier!);
+			return FailureResult(request, attempt);
 
 		PlannedCraftStep[] orderedSteps = attempt.Steps
 			.Select((step, sequence) => step.WithSequence(sequence))
@@ -50,7 +51,9 @@ public static class RecursiveSinglePathPlanner
 			orderedSteps,
 			attempt.Reservations,
 			attempt.Productions,
-			frontier: null);
+			frontier: null,
+			attempt.Decisions,
+			attempt.AppliedChoices);
 	}
 
 	private static Attempt PlanRecipe(
@@ -59,9 +62,10 @@ public static class RecursiveSinglePathPlanner
 		long requestedOutputQuantity,
 		VirtualResourceLedger inputLedger,
 		int depth,
+		int? incomingIngredientOrdinal,
 		IReadOnlyList<PlanningPathEntry> dependencyPath)
 	{
-		var currentEntry = new PlanningPathEntry(depth, recipe, requestedOutputQuantity);
+		var currentEntry = new PlanningPathEntry(depth, recipe, requestedOutputQuantity, incomingIngredientOrdinal);
 		PlanningPathEntry[] currentPath = dependencyPath.Append(currentEntry).ToArray();
 		if (depth > context.Request.Limits.MaximumDependencyDepth) {
 			return context.Failure(
@@ -152,6 +156,8 @@ public static class RecursiveSinglePathPlanner
 		var steps = new List<PlannedCraftStep>();
 		var reservations = new List<VirtualResourceReservation>();
 		var productions = new List<VirtualResourceProduction>();
+		var decisions = new List<AlternativeDecision>();
+		var appliedChoices = new List<RecipeChoiceApplication>();
 		var ingredientUses = new List<PlannedIngredientUse>(ingredients.Length);
 		foreach (IngredientEdge ingredient in ingredients) {
 			long required = quantities.ScaleIngredient(ingredient);
@@ -177,34 +183,32 @@ public static class RecursiveSinglePathPlanner
 						currentPath,
 						Array.Empty<RecipeNode>(),
 						resolutionEvidence: null,
-						inputLedger);
+						trialLedger)
+						.WithPrependedProvenance(decisions, appliedChoices);
 				}
 
-				if (producers.Length > 1) {
-					return context.Failure(
-						RecursivePlanStatus.AlternativeProducerDeferred,
-						PlanningFrontierKind.AlternativeProducerDeferred,
+				Attempt child = producers.Length == 1
+					? PlanRecipe(context, producers[0], deficit, trialLedger, depth + 1, ingredient.Ordinal, currentPath)
+					: EvaluateAlternative(
+						context,
 						recipe,
 						ingredient,
-						ingredient.Source,
 						required,
 						availableBeforeExpansion,
 						deficit,
+						trialLedger,
 						depth,
 						currentPath,
-						producers,
-						resolutionEvidence: null,
-						inputLedger);
-				}
-
-				Attempt child = PlanRecipe(context, producers[0], deficit, trialLedger, depth + 1, currentPath);
+						producers);
 				if (!child.Succeeded)
-					return child;
+					return child.WithPrependedProvenance(decisions, appliedChoices);
 
 				trialLedger = child.Ledger;
 				steps.AddRange(child.Steps);
 				reservations.AddRange(child.Reservations);
 				productions.AddRange(child.Productions);
+				decisions.AddRange(child.Decisions);
+				appliedChoices.AddRange(child.AppliedChoices);
 			}
 
 			long availableBeforeReservation = trialLedger.GetBalance(ingredient.Source.ItemType).RemainingQuantity;
@@ -236,23 +240,257 @@ public static class RecursiveSinglePathPlanner
 			quantities.CraftRepetitions,
 			quantities.ProducedQuantity,
 			ingredientUses));
-		return Attempt.Success(trialLedger, steps, reservations, productions);
+		return Attempt.Success(trialLedger, steps, reservations, productions, decisions, appliedChoices);
+	}
+
+	private static Attempt EvaluateAlternative(
+		PlanningContext context,
+		RecipeNode consumingRecipe,
+		IngredientEdge requirement,
+		long requiredQuantity,
+		long availableQuantity,
+		long deficitQuantity,
+		VirtualResourceLedger decisionLedger,
+		int depth,
+		IReadOnlyList<PlanningPathEntry> dependencyPath,
+		IReadOnlyList<RecipeNode> orderedCandidates)
+	{
+		AlternativeDecisionId decisionId = CreateDecisionId(consumingRecipe, requirement, dependencyPath);
+		if (context.Request.ExplicitChoices.TryGetValue(decisionId, out ExplicitRecipeChoice? explicitChoice)) {
+			RecipeNode? selected = orderedCandidates.FirstOrDefault(candidate => ReferenceEquals(candidate, explicitChoice.SelectedRecipe));
+			if (selected is null) {
+				AlternativeCandidateResult[] invalidCandidates = orderedCandidates
+					.Select(candidate => NotApplicableCandidate(candidate, deficitQuantity))
+					.ToArray();
+				var invalidDecision = new AlternativeDecision(
+					decisionId,
+					AlternativeDecisionState.InvalidExplicitChoice,
+					consumingRecipe,
+					requirement,
+					requiredQuantity,
+					availableQuantity,
+					deficitQuantity,
+					depth,
+					dependencyPath,
+					invalidCandidates,
+					explicitChoice.SelectedRecipe);
+				PlanningFrontier frontier = context.CreateFrontier(
+					PlanningFrontierKind.InvalidExplicitChoice,
+					consumingRecipe,
+					requirement,
+					requirement.Source,
+					requiredQuantity,
+					availableQuantity,
+					deficitQuantity,
+					depth,
+					dependencyPath,
+					orderedCandidates,
+					resolutionEvidence: null);
+				return Attempt.Failure(RecursivePlanStatus.InvalidExplicitChoice, decisionLedger, frontier)
+					.WithDecision(invalidDecision);
+			}
+
+			Attempt selectedAttempt = PlanRecipe(
+				context,
+				selected,
+				deficitQuantity,
+				decisionLedger,
+				depth + 1,
+				requirement.Ordinal,
+				dependencyPath);
+			AlternativeCandidateResult selectedResult = ToCandidateResult(selected, deficitQuantity, selectedAttempt);
+			AlternativeCandidateResult[] explicitCandidates = orderedCandidates
+				.Select(candidate => ReferenceEquals(candidate, selected)
+					? selectedResult
+					: NotApplicableCandidate(candidate, deficitQuantity))
+				.ToArray();
+			AlternativeDecisionState state = selectedAttempt.Succeeded
+				|| selectedResult.Status is AlternativeCandidateStatus.RequiresUserChoice or AlternativeCandidateStatus.Deferred
+					? AlternativeDecisionState.ExplicitlySelected
+					: AlternativeDecisionState.ExplicitChoiceFailed;
+			var decision = new AlternativeDecision(
+				decisionId,
+				state,
+				consumingRecipe,
+				requirement,
+				requiredQuantity,
+				availableQuantity,
+				deficitQuantity,
+				depth,
+				dependencyPath,
+				explicitCandidates,
+				selected);
+			var application = new RecipeChoiceApplication(decisionId, selected, RecipeChoiceApplicationKind.ExplicitUserChoice);
+			if (selectedAttempt.Succeeded)
+				return selectedAttempt.WithDecision(decision, application);
+
+			RecursivePlanStatus selectedStatus = selectedResult.Status switch
+			{
+				AlternativeCandidateStatus.RequiresUserChoice => RecursivePlanStatus.UserChoiceRequired,
+				AlternativeCandidateStatus.Deferred => RecursivePlanStatus.AlternativeResolutionDeferred,
+				_ => RecursivePlanStatus.ExplicitChoiceFailed
+			};
+			return selectedAttempt.WithStatus(selectedStatus).WithDecision(decision, application);
+		}
+
+		var evaluated = new List<(RecipeNode Recipe, Attempt Attempt, AlternativeCandidateResult Result)>(orderedCandidates.Count);
+		foreach (RecipeNode candidate in orderedCandidates) {
+			Attempt candidateAttempt = PlanRecipe(
+				context,
+				candidate,
+				deficitQuantity,
+				decisionLedger,
+				depth + 1,
+				requirement.Ordinal,
+				dependencyPath);
+			evaluated.Add((candidate, candidateAttempt, ToCandidateResult(candidate, deficitQuantity, candidateAttempt)));
+		}
+
+		var candidateResults = evaluated.Select(entry => entry.Result).ToArray();
+		var fullyViable = evaluated.Where(entry => entry.Result.Status == AlternativeCandidateStatus.FullyViable).ToArray();
+		bool hasRequiresChoice = evaluated.Any(entry => entry.Result.Status == AlternativeCandidateStatus.RequiresUserChoice);
+		bool hasDeferred = evaluated.Any(entry => entry.Result.Status == AlternativeCandidateStatus.Deferred);
+		if (fullyViable.Length == 1 && !hasRequiresChoice && !hasDeferred) {
+			var decision = new AlternativeDecision(
+				decisionId,
+				AlternativeDecisionState.AutoSelectedOnlyViable,
+				consumingRecipe,
+				requirement,
+				requiredQuantity,
+				availableQuantity,
+				deficitQuantity,
+				depth,
+				dependencyPath,
+				candidateResults,
+				fullyViable[0].Recipe);
+			var application = new RecipeChoiceApplication(decisionId, fullyViable[0].Recipe, RecipeChoiceApplicationKind.AutoSelectedOnlyViable);
+			return fullyViable[0].Attempt.WithDecision(decision, application);
+		}
+
+		AlternativeDecisionState unresolvedState;
+		RecursivePlanStatus unresolvedStatus;
+		if (fullyViable.Length >= 2 || (fullyViable.Length == 0 && hasRequiresChoice)) {
+			unresolvedState = AlternativeDecisionState.UserChoiceRequired;
+			unresolvedStatus = RecursivePlanStatus.UserChoiceRequired;
+		}
+		else if (hasRequiresChoice || hasDeferred) {
+			unresolvedState = AlternativeDecisionState.UnresolvedDeferred;
+			unresolvedStatus = RecursivePlanStatus.AlternativeResolutionDeferred;
+		}
+		else {
+			unresolvedState = AlternativeDecisionState.NoViableCandidate;
+			unresolvedStatus = RecursivePlanStatus.NoViableAlternative;
+		}
+
+		var unresolvedDecision = new AlternativeDecision(
+			decisionId,
+			unresolvedState,
+			consumingRecipe,
+			requirement,
+			requiredQuantity,
+			availableQuantity,
+			deficitQuantity,
+			depth,
+			dependencyPath,
+			candidateResults,
+			selectedRecipe: null);
+		PlanningFrontier? representativeFrontier = evaluated
+			.Select(entry => entry.Attempt.Frontier)
+			.FirstOrDefault(frontier => frontier is not null);
+		return Attempt.Failure(unresolvedStatus, decisionLedger, representativeFrontier)
+			.WithDecision(unresolvedDecision);
+	}
+
+	private static AlternativeCandidateResult ToCandidateResult(
+		RecipeNode recipe,
+		long requestedOutputQuantity,
+		Attempt attempt)
+	{
+		RecipePlanningQuantities quantities = RecipePlanningMath.Calculate(recipe, requestedOutputQuantity);
+		AlternativeCandidateStatus status = ClassifyCandidate(attempt);
+		bool isPreview = status == AlternativeCandidateStatus.FullyViable;
+		return new AlternativeCandidateResult(
+			recipe,
+			status,
+			requestedOutputQuantity,
+			quantities.CraftRepetitions,
+			quantities.ProducedQuantity,
+			attempt.Status,
+			isPreview ? attempt.Ledger : null,
+			isPreview ? attempt.Steps : Array.Empty<PlannedCraftStep>(),
+			isPreview ? attempt.Reservations : Array.Empty<VirtualResourceReservation>(),
+			isPreview ? attempt.Productions : Array.Empty<VirtualResourceProduction>(),
+			attempt.Frontier,
+			attempt.Decisions,
+			attempt.PendingDecision,
+			attempt.AppliedChoices);
+	}
+
+	private static AlternativeCandidateResult NotApplicableCandidate(RecipeNode recipe, long requestedOutputQuantity)
+	{
+		RecipePlanningQuantities quantities = RecipePlanningMath.Calculate(recipe, requestedOutputQuantity);
+		return new AlternativeCandidateResult(
+			recipe,
+			AlternativeCandidateStatus.NotApplicable,
+			requestedOutputQuantity,
+			quantities.CraftRepetitions,
+			quantities.ProducedQuantity,
+			RecursivePlanStatus.InvalidExplicitChoice,
+			resultLedger: null,
+			Array.Empty<PlannedCraftStep>(),
+			Array.Empty<VirtualResourceReservation>(),
+			Array.Empty<VirtualResourceProduction>(),
+			frontier: null,
+			Array.Empty<AlternativeDecision>(),
+			nestedDecision: null,
+			Array.Empty<RecipeChoiceApplication>());
+	}
+
+	private static AlternativeCandidateStatus ClassifyCandidate(Attempt attempt)
+	{
+		if (attempt.Succeeded)
+			return AlternativeCandidateStatus.FullyViable;
+		return attempt.Status switch
+		{
+			RecursivePlanStatus.UserChoiceRequired => AlternativeCandidateStatus.RequiresUserChoice,
+			RecursivePlanStatus.BlockedByStation or RecursivePlanStatus.BlockedByCondition => AlternativeCandidateStatus.Blocked,
+			RecursivePlanStatus.DeferredRecipeGroupAllocation
+				or RecursivePlanStatus.TargetSubgraphTruncated
+				or RecursivePlanStatus.UnknownConstraint
+				or RecursivePlanStatus.CycleBoundary
+				or RecursivePlanStatus.PlanningDepthBoundary
+				or RecursivePlanStatus.AlternativeResolutionDeferred => AlternativeCandidateStatus.Deferred,
+			RecursivePlanStatus.InvalidExplicitChoice => AlternativeCandidateStatus.NotApplicable,
+			_ => AlternativeCandidateStatus.Failed
+		};
+	}
+
+	private static AlternativeDecisionId CreateDecisionId(
+		RecipeNode consumingRecipe,
+		IngredientEdge requirement,
+		IReadOnlyList<PlanningPathEntry> dependencyPath)
+	{
+		string path = string.Join("/", dependencyPath.Select(entry =>
+			$"{entry.Recipe.RecipeIndex}@{(entry.IncomingIngredientOrdinal?.ToString() ?? "root")}"));
+		return new AlternativeDecisionId(
+			$"recipe-choice:{path}/ingredient:{consumingRecipe.RecipeIndex}:{requirement.Ordinal}:item:{requirement.Source.ItemType}");
 	}
 
 	private static RecursiveRecipePlanResult FailureResult(
 		RecursiveRecipePlanningRequest request,
-		RecursivePlanStatus status,
-		PlanningFrontier frontier) =>
+		Attempt attempt) =>
 		new(
 			request.SelectedRootRecipe,
 			request.RequiredOutputQuantity,
-			status,
+			attempt.Status,
 			request.Ledger,
 			request.Ledger,
 			Array.Empty<PlannedCraftStep>(),
 			Array.Empty<VirtualResourceReservation>(),
 			Array.Empty<VirtualResourceProduction>(),
-			frontier);
+			attempt.Frontier,
+			attempt.Decisions,
+			attempt.AppliedChoices);
 
 	private sealed class PlanningContext
 	{
@@ -338,7 +576,9 @@ public static class RecursiveSinglePathPlanner
 			IReadOnlyList<PlannedCraftStep> steps,
 			IReadOnlyList<VirtualResourceReservation> reservations,
 			IReadOnlyList<VirtualResourceProduction> productions,
-			PlanningFrontier? frontier)
+			PlanningFrontier? frontier,
+			IReadOnlyList<AlternativeDecision> decisions,
+			IReadOnlyList<RecipeChoiceApplication> appliedChoices)
 		{
 			Succeeded = succeeded;
 			Status = status;
@@ -347,6 +587,8 @@ public static class RecursiveSinglePathPlanner
 			Reservations = reservations;
 			Productions = productions;
 			Frontier = frontier;
+			Decisions = decisions;
+			AppliedChoices = appliedChoices;
 		}
 
 		public bool Succeeded { get; }
@@ -356,18 +598,32 @@ public static class RecursiveSinglePathPlanner
 		public IReadOnlyList<VirtualResourceReservation> Reservations { get; }
 		public IReadOnlyList<VirtualResourceProduction> Productions { get; }
 		public PlanningFrontier? Frontier { get; }
+		public IReadOnlyList<AlternativeDecision> Decisions { get; }
+		public IReadOnlyList<RecipeChoiceApplication> AppliedChoices { get; }
+		public AlternativeDecision? PendingDecision => Decisions.LastOrDefault(decision => !decision.IsResolved);
 
 		public static Attempt Success(
 			VirtualResourceLedger ledger,
 			IReadOnlyList<PlannedCraftStep> steps,
 			IReadOnlyList<VirtualResourceReservation> reservations,
-			IReadOnlyList<VirtualResourceProduction> productions) =>
-			new(true, RecursivePlanStatus.Success, ledger, steps, reservations, productions, frontier: null);
+			IReadOnlyList<VirtualResourceProduction> productions,
+			IReadOnlyList<AlternativeDecision>? decisions = null,
+			IReadOnlyList<RecipeChoiceApplication>? appliedChoices = null) =>
+			new(
+				true,
+				RecursivePlanStatus.Success,
+				ledger,
+				steps,
+				reservations,
+				productions,
+				frontier: null,
+				decisions ?? Array.Empty<AlternativeDecision>(),
+				appliedChoices ?? Array.Empty<RecipeChoiceApplication>());
 
 		public static Attempt Failure(
 			RecursivePlanStatus status,
 			VirtualResourceLedger ledger,
-			PlanningFrontier frontier) =>
+			PlanningFrontier? frontier) =>
 			new(
 				false,
 				status,
@@ -375,6 +631,46 @@ public static class RecursiveSinglePathPlanner
 				Array.Empty<PlannedCraftStep>(),
 				Array.Empty<VirtualResourceReservation>(),
 				Array.Empty<VirtualResourceProduction>(),
-				frontier);
+				frontier,
+				Array.Empty<AlternativeDecision>(),
+				Array.Empty<RecipeChoiceApplication>());
+
+		public Attempt WithDecision(AlternativeDecision decision, RecipeChoiceApplication? application = null) =>
+			new(
+				Succeeded,
+				Status,
+				Ledger,
+				Steps,
+				Reservations,
+				Productions,
+				Frontier,
+				Decisions.Append(decision).ToArray(),
+				application is null ? AppliedChoices : AppliedChoices.Append(application).ToArray());
+
+		public Attempt WithStatus(RecursivePlanStatus status) =>
+			new(
+				false,
+				status,
+				Ledger,
+				Array.Empty<PlannedCraftStep>(),
+				Array.Empty<VirtualResourceReservation>(),
+				Array.Empty<VirtualResourceProduction>(),
+				Frontier,
+				Decisions,
+				AppliedChoices);
+
+		public Attempt WithPrependedProvenance(
+			IReadOnlyList<AlternativeDecision> decisions,
+			IReadOnlyList<RecipeChoiceApplication> appliedChoices) =>
+			new(
+				Succeeded,
+				Status,
+				Ledger,
+				Steps,
+				Reservations,
+				Productions,
+				Frontier,
+				decisions.Concat(Decisions).ToArray(),
+				appliedChoices.Concat(AppliedChoices).ToArray());
 	}
 }

@@ -61,6 +61,18 @@
 40. Cycle and depth detection are recursion safety boundaries, not cycle solving or search.
 41. Planned craft steps are dependency-ordered logical records, not execution commands.
 42. Recursive planning does not allocate concrete storage sources or mutate provenance.
+43. Planner determines supported feasibility; it does not invent or infer player preference.
+44. Every alternative Recipe candidate is evaluated from the same immutable decision-input Ledger branch.
+45. Candidate evaluation order and result order are canonical and deterministic, but ordering never implies preference.
+46. Exactly one fully viable candidate may be auto-selected only when every other candidate is proven failed or blocked.
+47. Two or more fully viable candidates produce structured `UserChoiceRequired`; no first-success, scoring, or optimization policy may select one.
+48. `RequiresUserChoice` and `Deferred` are not failure and must prevent a claim that another candidate is the only possible route.
+49. Deferred Planner capability is not evidence that a candidate is impossible.
+50. Candidate preview steps are domain evidence only; unresolved decisions publish no committed plan steps.
+51. Explicit Recipe choices are request-scoped constraints, validated against the canonical candidate set, and applied by deterministic re-planning.
+52. Failure of an explicitly selected candidate must be returned structurally and must never silently fall back to another candidate.
+53. Nested alternative decisions propagate as structured candidate state and provenance.
+54. Milestone 4.3 adds no Recipe Group allocator, general backtracking, preference memory, execution, transaction, or UI.
 
 ## 当前结构
 
@@ -137,11 +149,22 @@
 - Child success 的 result Ledger 必须顺序传给下一 sibling 和 parent；不得让不同依赖重复从初始 Ledger 读取资源。
 - Recipe output 按真实 `OutputStack` credit 为 Planner-owned virtual production；surplus 保留并可被后续 sibling 复用。
 - Zero producer 按现有 graph evidence 区分 terminal resource、subgraph truncation 和 no-producer-in-subgraph frontier；不扫描图外证明 atomic。
-- Multiple producers 始终返回 `AlternativeProducerDeferred`，即使其中只有一个是 `ReadyNow`。
+- M4.2 的历史基线曾将 multiple producers 返回为 `AlternativeProducerDeferred`；当前行为由下面的 Milestone 4.3 规则取代。
 - `NeedsIngredients` 可以由 recursion 解决；`ReadyNow` 不能覆盖 evolved Ledger；station/condition/unknown 继续由 Resolution 阻塞。
 - Cycle membership 只属于当前 dependency path；configured maximum depth 提供额外 stack-safety boundary。
 - Recursive root failure 返回原 Ledger，且公开 steps、reservations、productions 为空；这不是 general backtracking engine。
 - Planned steps 只记录 producer-before-consumer 的逻辑数量顺序，不含 runtime object、source allocation 或 execution mutation。
+
+## Milestone 4.3 Constraints
+
+- Root Recipe selection remains caller-owned. Alternative evaluation applies only to missing exact-item dependencies inside the selected root plan.
+- All included canonical producers are evaluated in ascending `RecipeIndex` order from one shared immutable decision-input Ledger.
+- Candidate states remain distinct: `FullyViable`, `RequiresUserChoice`, `Failed`, `Blocked`, `Deferred`, and `NotApplicable`.
+- Multiple fully viable candidates return `UserChoiceRequired`; exactly one is auto-selected only when all others are proven failed or blocked.
+- Explicit choices use deterministic decision identity plus canonical `RecipeNode` identity and re-plan without a mutable suspended Planner session.
+- Recipe Group allocation remains deferred. No global lookahead, branch scoring, optimization, general backtracking, source allocation, execution, or UI is present.
+- The old Milestone 4.2 multiple-producer deferral rule is superseded by this section; its remaining unique-producer, Ledger, frontier, cycle, and depth invariants still apply.
+- Current completed scope is Milestone 0 through Milestone 4.3. The next recommended scope is Resource Alternatives, Recipe Group Allocation, and General Backtracking, but it has not started.
 
 ## Future Visualization Direction
 
@@ -151,4 +174,4 @@
 
 ## 下一里程碑
 
-Milestone 4.2 已建立唯一 producer path 的递归数量传播、virtual intermediate production 和结构化 planning frontier。下一步仅建议 Milestone 4.3：Alternative Recipe OR planning；不要自行开始 Recipe Group allocation、backtracking、execution 或 UI。
+Milestone 4.3 已建立 isolated alternative evaluation、structured user-choice boundary、nested decision provenance 与 explicit-choice deterministic re-plan。下一步仅建议 Resource Alternatives + Recipe Group Allocation + General Backtracking；不要自行开始 execution 或 UI。

@@ -607,7 +607,57 @@ Frontier 保留 item、requirement、required/available/deficit、blocking recip
 - Canonical identity remains reference identity inside one materialized load-session graph, matching current Subgraph/Resolution dictionaries. Future cross-session persistence or graph reconstruction will need a stable graph-snapshot identity plus `RecipeIndex`/node key rather than accepting foreign objects by index alone.
 - Main future risks are alternative-branch result semantics, allocation across overlapping Recipe Groups, larger-plan copy-on-write cost, canonical identity across reconstructed snapshots, and full cycle/bootstrap policy.
 
-### Build and Runtime Result
+## 2026-08-19 - Milestone 4.3: Alternative Branching & User Choice Decision Model
+
+### Role and Scope
+
+- The existing recursive Planner now evaluates every canonical producer candidate for a missing exact-item requirement; no parallel Planner was introduced.
+- Root Recipe selection remains the caller's responsibility.
+- Planner reports supported feasibility and preserves uncertainty. It does not invent player preference.
+- Candidate branches begin from the identical immutable decision-input Ledger and cannot leak reservations, virtual production, surplus, steps, or nested decisions into siblings.
+
+### Decision and Candidate Semantics
+
+- Candidate outcomes are structured as `FullyViable`, `RequiresUserChoice`, `Failed`, `Blocked`, `Deferred`, or `NotApplicable`.
+- Exactly one fully viable candidate is auto-selected only when all other candidates are proven failed or blocked.
+- Two or more fully viable candidates return `UserChoiceRequired`; canonical order is deterministic presentation/evaluation order, not preference.
+- A fully viable candidate beside a `RequiresUserChoice` or `Deferred` candidate remains unresolved. Deferred capability is never presented as impossible.
+- Candidate previews retain logical steps, quantities, reservations, production, frontiers, and nested decision evidence without becoming committed plan steps.
+
+### Explicit Choice Boundary
+
+- `RecursiveRecipePlanningRequest` accepts request-scoped `ExplicitRecipeChoice` constraints keyed by deterministic `AlternativeDecisionId`.
+- Candidate identity remains canonical `RecipeNode` reference identity inside the current graph/load session.
+- The Planner validates that an explicit Recipe belongs to the encountered candidate set, then deterministically re-plans only that selected branch.
+- A selected candidate that later fails returns `ExplicitChoiceFailed` without silently falling back.
+- No paused coroutine, persistent Planner VM, preference store, or async resume engine was added.
+
+### Nested Decisions and Deliberate Boundaries
+
+- Nested `UserChoiceRequired` propagates as `RequiresUserChoice` on its containing candidate with structured parent/requirement/path provenance.
+- Recipe Group concrete allocation remains `DeferredRecipeGroupAllocation`.
+- No first-success selection, scoring, optimization, global lookahead, general backtracking, source allocation, execution, transaction, runtime mutation, or UI was added.
+- Planner Core continues to read only graph/subgraph, Resolution evidence, and immutable planning state; it does not read Player, inventory, `adjTile`, `Main.recipe`, or concrete storage APIs.
+
+### Validation
+
+- Added 24 Milestone 4.3 synthetic scenarios for alternative cardinality, branch isolation, explicit choice, no-fallback behavior, canonical ordering, recursive candidates, evolved Ledger truth, local-vs-global feasibility, nested choices, deferral, frontiers, regression, immutability, and determinism.
+- Updated the two Milestone 4.2 multiple-producer regression expectations to the new 4.3 decision semantics; the remaining 4.2 behavior stays unchanged.
+- Full `dotnet build GraphCraft.csproj --nologo`: SUCCESS, 0 warnings / 0 errors.
+- Real tModLoader `1.4.4.9+2026.06.3.6` server load-session: SUCCESS; final run reported `Mod Load Completed in 20785ms`.
+- Milestone 4.1: `14/14` PASS; Milestone 4.2: `22/22` PASS; Milestone 4.3: `24/24` PASS.
+- Milestone 4.3 alternative-decision validation elapsed: `8.839 ms`; all earlier graph, analysis, subgraph, resolution, and resource-source validations also passed.
+- The validation process was stopped after the complete report; no world was entered and no real inventory or storage resource was consumed or modified.
+
+### Forward Review
+
+- A future UI can consume `UserChoiceRequired`, `AlternativeDecision`, and ordered `AlternativeCandidateResult` directly without accessing Planner internals.
+- User selection can be submitted through a fresh immutable request and deterministic re-plan; no suspended mutable Planner is required.
+- A future Recipe Group phase can introduce a sibling resource-choice contract without changing Recipe decision identity or candidate preview semantics.
+- General backtracking can later treat automatic and explicit choices differently: automatic decisions may become search branches, while explicit choices remain hard constraints unless the caller asks to revise them.
+- Largest current risks are decision identity across reconstructed/load sessions, combinatorial cost once general search is introduced, and clearly separating deferred capability from proven failure as more decision kinds are added.
+
+### Historical Milestone 4.2 Build and Runtime Result
 
 - `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
 - tModLoader `1.4.4.9+2026.06.3.6` server load-session：SUCCESS；all previous validations plus 22/22 recursive tests passed。
