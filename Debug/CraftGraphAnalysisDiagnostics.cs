@@ -88,6 +88,8 @@ internal static partial class CraftGraphDiagnostics
 		  MaximumDependencyDepthReached: {subgraph.MaximumDependencyDepthReached}
 		  AlternativeProducerRecipes: {subgraph.AlternativeProducerRecipeCount}
 		  SharedItemNodes: {subgraph.SharedItemNodeCount}
+		  RecipeGroupExpandedItems: {subgraph.RecipeGroupExpandedItemCount}
+		  RecipeGroupExpansionReferences: {subgraph.RecipeGroupExpansionReferenceCount}
 		  IncludedComponents: {subgraph.IncludedComponentIds.Count}
 		  IncludedCyclicComponents: {cyclicComponents}
 		  IsTruncated: {subgraph.IsTruncated}

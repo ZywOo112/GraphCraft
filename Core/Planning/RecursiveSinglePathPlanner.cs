@@ -181,6 +181,7 @@ public static class GraphConstrainedCraftPlanner
 			return PlanRecipe(context, candidates[0], deficit, input, depth + 1, requirement.Ordinal, path);
 
 		AlternativeDecisionId id = CreateDecisionId(consumingRecipe, requirement, path);
+		context.BeginRecipeDecision();
 		if (context.Request.ExplicitChoices.TryGetValue(id, out ExplicitRecipeChoice? explicitChoice)) {
 			RecipeNode? selected = candidates.FirstOrDefault(candidate => ReferenceEquals(candidate, explicitChoice.SelectedRecipe));
 			if (selected is null) {
@@ -195,7 +196,7 @@ public static class GraphConstrainedCraftPlanner
 
 		var results = new List<Outcome>();
 		foreach (RecipeNode candidate in candidates) {
-			if (!context.TryExpand(out PlanningSearchStatistics _)) {
+			if (!context.TryExpand(SearchBranchKind.Recipe, out PlanningSearchStatistics _)) {
 				PlanningFrontier frontier = context.Frontier(PlanningFrontierKind.SearchBudgetBoundary, consumingRecipe, requirement, requirement.Source, required, available, deficit, depth, path, candidates, null);
 				results.Add(Outcome.Failure(input, RecursivePlanStatus.SearchBudgetBoundary, frontier));
 				break;
@@ -225,9 +226,10 @@ public static class GraphConstrainedCraftPlanner
 				consumingRecipe, requirement, requirement.Source, required, required, depth, path));
 
 		ResourceAllocationDecisionId decisionId = CreateResourceDecisionId(consumingRecipe, requirement, path);
+		context.BeginResourceDecision();
 		var results = new List<Outcome>();
 		for (int rotation = 0; rotation < accepted.Length; rotation++) {
-			if (accepted.Length > 1 && !context.TryExpand(out PlanningSearchStatistics _)) {
+			if (accepted.Length > 1 && !context.TryExpand(SearchBranchKind.ResourceAllocation, out PlanningSearchStatistics _)) {
 				PlanningFrontier frontier = context.Frontier(PlanningFrontierKind.SearchBudgetBoundary, consumingRecipe, requirement, requirement.Source,
 					required, AggregateAvailable(input.Ledger, accepted), required, depth, path, Array.Empty<RecipeNode>(), null);
 				results.Add(Outcome.Failure(input, RecursivePlanStatus.SearchBudgetBoundary, frontier));
@@ -334,6 +336,7 @@ public static class GraphConstrainedCraftPlanner
 		// A concrete group member with multiple producers is still a recipe OR
 		// decision. Reuse the same stable identity scheme with the group edge.
 		AlternativeDecisionId id = new($"{CreateDecisionId(consumingRecipe, requirement, path).Value}/group-member:{member.ItemType}");
+		context.BeginRecipeDecision();
 		IEnumerable<RecipeNode> selected = producers;
 		bool explicitSelection = false;
 		if (context.Request.ExplicitChoices.TryGetValue(id, out ExplicitRecipeChoice? explicitChoice)) {
@@ -348,7 +351,7 @@ public static class GraphConstrainedCraftPlanner
 		}
 		var results = new List<Outcome>();
 		foreach (RecipeNode producer in selected) {
-			if (!explicitSelection && !context.TryExpand(out PlanningSearchStatistics _)) {
+			if (!explicitSelection && !context.TryExpand(SearchBranchKind.Recipe, out PlanningSearchStatistics _)) {
 				results.Add(Outcome.Failure(state, RecursivePlanStatus.SearchBudgetBoundary,
 					context.Frontier(PlanningFrontierKind.SearchBudgetBoundary, consumingRecipe, requirement, member, required, 0, productionNeeded, depth, path, producers, null)));
 				break;
@@ -428,6 +431,8 @@ public static class GraphConstrainedCraftPlanner
 			status = RecursivePlanStatus.ExplicitChoiceFailed;
 		else if (outcomes.Any(outcome => outcome.Status == RecursivePlanStatus.SearchBudgetBoundary))
 			status = RecursivePlanStatus.SearchBudgetBoundary;
+		else if (outcomes.Any(outcome => outcome.Status == RecursivePlanStatus.TargetSubgraphTruncated))
+			status = RecursivePlanStatus.TargetSubgraphTruncated;
 		else if (decisions.Count > 0 && outcomes.Any(outcome => IsDeferred(outcome.Status)))
 			status = RecursivePlanStatus.AlternativeResolutionDeferred;
 		else if (decisions.Count > 0)
@@ -630,6 +635,10 @@ public static class GraphConstrainedCraftPlanner
 	private sealed class SearchContext
 	{
 		private int _expandedBranches;
+		private int _recipeBranchExpansions;
+		private int _resourceAllocationBranchExpansions;
+		private int _recipeDecisionCount;
+		private int _resourceAllocationDecisionCount;
 		private bool _budgetExhausted;
 
 		public SearchContext(RecursiveRecipePlanningRequest request)
@@ -643,7 +652,11 @@ public static class GraphConstrainedCraftPlanner
 		public HashSet<RecipeNode> IncludedRecipes { get; }
 		public IReadOnlyDictionary<int, ItemNode> IncludedItems { get; }
 
-		public bool TryExpand(out PlanningSearchStatistics statistics)
+		public void BeginRecipeDecision() => _recipeDecisionCount++;
+
+		public void BeginResourceDecision() => _resourceAllocationDecisionCount++;
+
+		public bool TryExpand(SearchBranchKind kind, out PlanningSearchStatistics statistics)
 		{
 			if (_expandedBranches >= Request.Limits.MaximumBranchExpansions) {
 				_budgetExhausted = true;
@@ -651,12 +664,26 @@ public static class GraphConstrainedCraftPlanner
 				return false;
 			}
 			_expandedBranches++;
+			if (kind == SearchBranchKind.Recipe)
+				_recipeBranchExpansions++;
+			else
+				_resourceAllocationBranchExpansions++;
 			statistics = Statistics(0, 0);
 			return true;
 		}
 
 		public PlanningSearchStatistics Statistics(int successes, int failures) =>
-			new(_expandedBranches, Request.Limits.MaximumBranchExpansions, _budgetExhausted, successes, failures);
+			new(
+				_expandedBranches,
+				Request.Limits.MaximumBranchExpansions,
+				_budgetExhausted,
+				successes,
+				failures,
+				_recipeBranchExpansions,
+				_resourceAllocationBranchExpansions,
+				failures,
+				_recipeDecisionCount,
+				_resourceAllocationDecisionCount);
 
 		public (RecursivePlanStatus Status, PlanningFrontierKind Kind) ZeroProducerBoundary(ItemNode item)
 		{
@@ -679,6 +706,12 @@ public static class GraphConstrainedCraftPlanner
 			long required, long available, long deficit, int depth, IReadOnlyList<PlanningPathEntry> path,
 			IReadOnlyList<RecipeNode> candidates, RecipeResolution? resolutionEvidence) =>
 			new(kind, recipe, requirement, item, required, available, deficit, depth, path, candidates, resolutionEvidence, Request.TargetSubgraph);
+	}
+
+	private enum SearchBranchKind
+	{
+		Recipe,
+		ResourceAllocation
 	}
 
 	private sealed class SearchState

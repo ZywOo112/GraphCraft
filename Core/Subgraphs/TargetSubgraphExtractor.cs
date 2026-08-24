@@ -29,6 +29,7 @@ public static class TargetSubgraphExtractor
 		var depthByNode = new Dictionary<GraphNodeKey, int>();
 		var includedComponentIds = new HashSet<int>();
 		var processedItems = new HashSet<GraphNodeKey>();
+		var recipeGroupExpandedItems = new HashSet<ItemNode>();
 		var pendingItems = new Queue<(ItemNode Item, int Depth)>();
 		SubgraphTruncationReason truncationReason = SubgraphTruncationReason.None;
 		int skippedFrontierCount = 0;
@@ -77,6 +78,14 @@ public static class TargetSubgraphExtractor
 
 				foreach (IngredientEdge ingredient in producer.Ingredients) {
 					ingredientEdges.Add(ingredient);
+					foreach (int acceptedItemType in ingredient.AcceptedRecipeGroups
+						.SelectMany(group => group.AcceptedItemTypes)
+						.Distinct()
+						.OrderBy(itemType => itemType)) {
+						if (acceptedItemType != ingredient.Source.ItemType &&
+							graph.ItemsByType.TryGetValue(acceptedItemType, out ItemNode? acceptedItem))
+							recipeGroupExpandedItems.Add(acceptedItem);
+					}
 				}
 				foreach (ItemNode dependencyItem in dependencyItems) {
 					bool isNewItem = itemNodes.Add(dependencyItem);
@@ -109,7 +118,12 @@ public static class TargetSubgraphExtractor
 			skippedFrontierCount,
 			alternativeProducerRecipeCount,
 			sharedItemNodeCount,
-			timer.Elapsed);
+			timer.Elapsed,
+			recipeGroupExpandedItems.Count,
+			ingredientEdges.Sum(edge => edge.AcceptedRecipeGroups
+				.SelectMany(group => group.AcceptedItemTypes)
+				.Distinct()
+				.Count(itemType => itemType != edge.Source.ItemType && graph.ItemsByType.ContainsKey(itemType))));
 		ValidateResult(graph, analysis, result);
 		return result;
 

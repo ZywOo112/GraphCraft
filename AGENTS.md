@@ -165,9 +165,30 @@
 - Explicit choices use deterministic decision identity plus canonical `RecipeNode` identity and re-plan without a mutable suspended Planner session.
 - Recipe Group allocation remains deferred. No global lookahead, branch scoring, optimization, general backtracking, source allocation, execution, or UI is present.
 - The old Milestone 4.2 multiple-producer deferral rule is superseded by this section; its remaining unique-producer, Ledger, frontier, cycle, and depth invariants still apply.
-- Current completed scope is Milestone 0 through Milestone 4.3. The next recommended scope is Resource Alternatives, Recipe Group Allocation, and General Backtracking, but it has not started.
+- Historical note: this Milestone 4.3 boundary was superseded by completed M4.4 and the authoritative Milestone 4 Final constraints below.
 
 ## Future Visualization Direction
+
+## Milestone 4 Final Constraints (Authoritative)
+
+- `TargetCraftPlanner` is the normal high-level planning entry point. Callers provide a target `ItemNode`, an explicit `RequestedAdditionalOutputQuantity`, the matching `TargetCraftSubgraph` and `ResolutionSnapshot`, an immutable starting `VirtualResourceLedger`, optional explicit recipe choices, and bounded planning limits.
+- Requested target quantity always means additional output. Existing target items in the resource snapshot do not reduce the requested production quantity; a future desired-final-count UI must calculate its own additional deficit before calling Planner.
+- Root producers are discovered only from canonical recipes already included in the supplied target subgraph. Planner never scans `Main.recipe` or escapes the graph boundary.
+- Root and dependency recipe alternatives use the same complete-continuation rule: zero complete routes preserves the most accurate failure/deferred/boundary evidence; exactly one complete route is automatic; two or more complete routes return `UserChoiceRequired`, exposing only confirmed complete candidates.
+- Root choices have a dedicated `RootRecipeDecisionId`; they are not represented as fake ingredient decisions. Explicit root and dependency recipe choices are hard constraints and may never silently fall back to another recipe.
+- `GraphConstrainedCraftPlanner` remains the single recursive search core. The selected-root API and `RecursiveSinglePathPlanner` remain compatibility surfaces, not parallel search implementations.
+- Planner-owned recipe decisions and concrete Recipe Group allocations may backtrack. Abandoned immutable branches publish no reservations, virtual productions, steps, allocations, or Ledger changes.
+- Recipe Group allocation reserves concrete accepted `ItemType` quantities and may split, reuse virtual surplus, and recursively produce accepted members. Source-level allocation remains an M5 execution responsibility.
+- Cycle detection is path-local. Existing resources may terminate recursion; a cyclic branch may be abandoned for an acyclic alternative. No fixed-point, bootstrap, inverse-crafting, or dismantling solver is present.
+- Target-subgraph truncation and planner search-budget exhaustion mean incomplete knowledge, never proven impossibility. A complete route may still succeed despite unrelated truncation.
+- Extraction depth/node limits and planning branch limits are distinct boundaries. Recipe Group expansion is canonical, deterministic, bounded, and reported through subgraph diagnostics.
+- `MaximumBranchExpansions` defaults to 4096 and covers recipe branches, resource-allocation branches, and nested backtracking. Search statistics report both branch kinds, decision counts, backtracks, successes/failures, maximum budget, and exhaustion.
+- Planning is deterministic and bounded, but deliberately does not score, optimize, or claim shortest/cheapest output.
+- Runtime resource, environment, Resolution, and provenance snapshots are immutable. Planner does not access `Player`, inventory, `adjTile`, live storage, `Main.recipe`, or third-party APIs; it does not consume, transact, craft, spawn, or render UI.
+- A successful logical plan provides ordered craft steps, scaled repetitions/output, logical reservations and productions, final Ledger, recipe decisions, concrete group allocations, structured frontiers, previews/provenance, and search statistics for M5 to revalidate and execute transactionally.
+- `/gcstate <itemId> [additionalQuantity]` is a development-only in-world validation seam that captures real context before invoking the graph-constrained target Planner. It is not a user-facing planner UI.
+- Actual load-session integration tests use canonical post-setup Terraria recipes and prove vanilla ownership through `Recipe.Mod is null`; fixed RecipeIndex values are not used to select cases.
+- Milestone 4 is complete. Deferred work is limited to M5 transactional execution, later UI, third-party resource adapters, and future preference/optimization policy.
 
 ## Milestone 4.4 Constraints
 

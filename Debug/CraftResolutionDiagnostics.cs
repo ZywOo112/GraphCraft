@@ -8,6 +8,52 @@ namespace GraphCraft.Debug;
 
 internal static class CraftResolutionDiagnostics
 {
+	public static string FormatTargetPlanAudit(TargetCraftPlanResult result, Func<int, string> itemName)
+	{
+		var builder = new StringBuilder();
+		builder.AppendLine($"[GraphCraft] Target plan audit: {itemName(result.Target.ItemType)} ({result.Target.ItemType}) additional x{result.RequestedAdditionalOutputQuantity}");
+		builder.AppendLine($"  Status: {result.Status}; selected root: {(result.SelectedRootRecipe is null ? "none" : $"Recipe #{result.SelectedRootRecipe.RecipeIndex}")}");
+		builder.AppendLine($"  Root candidates: {result.RootDecision?.Candidates.Count ?? result.Target.ProducerRecipes.Count}; root decision: {result.RootDecision?.State.ToString() ?? "none"}");
+		if (result.RootDecision?.UserSelectableCandidates.Count > 0)
+			builder.AppendLine($"  Confirmed selectable roots: {string.Join(", ", result.RootDecision.UserSelectableCandidates.Select(candidate => $"Recipe #{candidate.Recipe.RecipeIndex}"))}");
+		builder.AppendLine($"  Steps: {result.Steps.Count}; reservations: {result.Reservations.Count}; productions: {result.Productions.Count}; group allocations: {result.GroupAllocations.Count}");
+		foreach (PlannedCraftStep step in result.Steps)
+			builder.AppendLine($"    {step.Sequence}. Recipe #{step.Recipe.RecipeIndex} -> {itemName(step.Recipe.Result.ItemType)} repetitions={step.CraftRepetitions}, produced={step.ProducedQuantity}");
+		foreach (RecipeGroupAllocation allocation in result.GroupAllocations)
+			builder.AppendLine($"    Group #{string.Join(',', allocation.RecipeGroups.Select(group => group.GroupId))} required={allocation.RequiredQuantity}: {allocation.DeterministicSignature}");
+		builder.AppendLine($"  Search: expanded={result.SearchStatistics.ExpandedBranches}/{result.SearchStatistics.MaximumBranchExpansions}, recipe={result.SearchStatistics.RecipeBranchExpansions}, resource={result.SearchStatistics.ResourceAllocationBranchExpansions}, backtracks={result.SearchStatistics.BacktrackedBranchCount}, exhausted={result.SearchStatistics.BudgetExhausted}");
+		if (result.Frontier is not null)
+			builder.AppendLine($"  Frontier: {result.Frontier.Kind}; dependency={result.Frontier.DependencyFrontier?.Kind.ToString() ?? "none"}; truncation={result.Frontier.SubgraphTruncationReason}");
+		return builder.ToString();
+	}
+
+	public static string FormatRealRecipeIntegration(RealRecipeIntegrationReport report, Func<int, string> itemName)
+	{
+		var builder = new StringBuilder();
+		builder.AppendLine("[GraphCraft] Milestone 4 actual Terraria recipe integration validation");
+		foreach (RealRecipeIntegrationCase test in report.Cases) {
+			builder.AppendLine($"  {test.Category}: PASS target={itemName(test.TargetItemType)} ({test.TargetItemType}), roots=[{string.Join(',', test.RootRecipeIndices)}], status={test.Status}");
+			builder.AppendLine($"    graph items={test.ItemNodeCount}, recipes={test.RecipeNodeCount}, edges={test.TotalEdgeCount}, groupExpandedItems={test.RecipeGroupExpandedItemCount}, truncated={test.TruncationReason}, extractionMs={test.ExtractionElapsed.TotalMilliseconds:F3}");
+			builder.AppendLine($"    plan steps={test.PlannedStepCount}, branches={test.SearchStatistics.ExpandedBranches}/{test.SearchStatistics.MaximumBranchExpansions}, recipeBranches={test.SearchStatistics.RecipeBranchExpansions}, resourceBranches={test.SearchStatistics.ResourceAllocationBranchExpansions}, backtracks={test.SearchStatistics.BacktrackedBranchCount}, planningMs={test.PlanningElapsed.TotalMilliseconds:F3}");
+			builder.AppendLine($"    evidence: {test.Evidence}");
+		}
+		builder.AppendLine($"  PassedActualRecipeCases: {report.PassedCaseCount}/{report.Cases.Count}");
+		builder.AppendLine($"  ActualRecipeIntegrationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}");
+		return builder.ToString();
+	}
+
+	public static string FormatPlannerFinalizationValidation(PlannerFinalizationSyntheticReport report) => $"""
+		[GraphCraft] Milestone 4 finalization synthetic validation
+		  Target-level planning: {report.TargetPlannerTestCount}/10 PASS
+		  Cycle/SCC policy: {report.CycleTestCount}/5 PASS
+		  Truncation semantics: {report.TruncationTestCount}/4 PASS
+		  Search-budget semantics: {report.SearchBudgetTestCount}/5 PASS
+		  Root choice example: status={report.TargetChoiceExample.Status}, candidates={report.TargetChoiceExample.RootDecision?.Candidates.Count}, selectable={report.TargetChoiceExample.RootDecision?.UserSelectableCandidates.Count}
+		  Cycle recovery example: status={report.CycleRecoveryExample.Status}, selectedRoot={report.CycleRecoveryExample.SelectedRootRecipe?.RecipeIndex}
+		  Budget example: status={report.BudgetExample.Status}, expanded={report.BudgetExample.SearchStatistics.ExpandedBranches}/{report.BudgetExample.SearchStatistics.MaximumBranchExpansions}
+		  FinalizationSyntheticValidationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}
+	""";
+
 	public static string FormatResourceAlternativeValidation(ResourceAlternativeSyntheticReport report) => $"""
 		[GraphCraft] Milestone 4.4 resource alternatives and planner backtracking validation
 		  Root-continuation Recipe backtracking: PASS

@@ -55,7 +55,9 @@ public sealed class TargetCraftSubgraph
 		int skippedFrontierCount,
 		int alternativeProducerRecipeCount,
 		int sharedItemNodeCount,
-		TimeSpan elapsed)
+		TimeSpan elapsed,
+		int recipeGroupExpandedItemCount = 0,
+		int recipeGroupExpansionReferenceCount = 0)
 	{
 		Target = target;
 		ItemNodes = new ReadOnlyCollection<ItemNode>(itemNodes.OrderBy(item => item.ItemType).ToArray());
@@ -75,6 +77,8 @@ public sealed class TargetCraftSubgraph
 		SkippedFrontierCount = skippedFrontierCount;
 		AlternativeProducerRecipeCount = alternativeProducerRecipeCount;
 		SharedItemNodeCount = sharedItemNodeCount;
+		RecipeGroupExpandedItemCount = recipeGroupExpandedItemCount;
+		RecipeGroupExpansionReferenceCount = recipeGroupExpansionReferenceCount;
 		Elapsed = elapsed;
 	}
 
@@ -101,6 +105,10 @@ public sealed class TargetCraftSubgraph
 	public int AlternativeProducerRecipeCount { get; }
 
 	public int SharedItemNodeCount { get; }
+
+	public int RecipeGroupExpandedItemCount { get; }
+
+	public int RecipeGroupExpansionReferenceCount { get; }
 
 	public TimeSpan Elapsed { get; }
 

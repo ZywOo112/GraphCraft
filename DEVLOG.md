@@ -678,6 +678,76 @@ Frontier 保留 item、requirement、required/available/deficit、blocking recip
 
 ### Historical Milestone 4.2 Build and Runtime Result
 
+## 2026-08-24 - Milestone 4 Finalization: Target-Level Planning, Hardening, and Actual Terraria Integration
+
+### Final Product Contract
+
+- Added `TargetCraftPlanner`, whose request expresses target item plus `RequestedAdditionalOutputQuantity`; current ownership of the target never reduces that additional quantity.
+- Root producers are enumerated only from the supplied canonical `TargetCraftSubgraph`. Zero, one, and multiple-root cases retain structured frontier evidence and use complete root-continuation viability.
+- Exactly one fully successful root route is automatic. Two or more fully successful routes return `UserChoiceRequired` with only those confirmed routes. Explicit root selection uses a dedicated root decision identity and is a no-fallback hard constraint.
+- The high-level entry point delegates every candidate to the existing `GraphConstrainedCraftPlanner`; the selected-root APIs remain compatible and no second recursive search implementation was introduced.
+- Cycle detection is path-local; truncation and branch-budget boundaries preserve uncertainty; resource and recipe branches share the deterministic 4096-expansion default budget.
+- Search statistics now separate recipe/resource branch expansions and decision counts and report backtracks, completed/failed plans, maximum budget, and exhaustion.
+- Target-subgraph diagnostics now report canonical Recipe Group expanded-item and expansion-reference counts.
+- Added `/gcstate <itemId> [additionalQuantity]` as a development-only real-player capture/resolve/plan diagnostic seam. It performs no execution and is not formal UI.
+
+### Actual Terraria Recipe Matrix
+
+Every case was selected from the post-setup canonical graph by ItemID/relationships/metadata rather than a fixed RecipeIndex. Vanilla ownership was checked directly with tModLoader's `Recipe.Mod is null` metadata.
+
+| Category | Actual target | Result | Key evidence |
+| --- | --- | --- | --- |
+| Simple one recipe | Gold Bar (19) | PASS | one direct Terraria-owned root |
+| Three-plus levels | Healing Potion (188) | PASS | 3 dependency-ordered steps using only vanilla ItemIDs |
+| Multi-output | Vile Powder (67) | PASS | requested output crosses one-craft stack boundary |
+| Real Recipe Group | Iron Pickaxe (1) | PASS | mixed concrete allocation across canonical group members |
+| Multiple roots, one viable | Grilled Squirrel (4024) | PASS | unique complete route auto-selected |
+| Multiple roots, two viable | Grilled Squirrel (4024) | PASS | only two complete roots exposed for user choice |
+| Station boundary | Copper Watch (15) | PASS | blocked without required tiles 14/15; successful with captured evidence |
+| Longer graph | Cell Phone (3124) | PASS | bounded graph, recursive plan, no budget exhaustion |
+
+### Finalization Test Matrix
+
+| Suite | Coverage | Result |
+| --- | --- | --- |
+| Target Planner T1-T10 | root cardinality, explicit root, zero root, truncation, additional quantity, multi-output, determinism | 10/10 PASS |
+| Cycle C1-C5 | cycle boundary, resource break, acyclic alternative, branch isolation, deterministic evidence | 5/5 PASS |
+| Truncation TR1-TR4 | irrelevant/relevant truncation, viable alternatives, graph confinement | 4/4 PASS |
+| Search budget B1-B5 | deterministic boundary, normal plan, atomic Ledger, uncertainty, explicit choice | 5/5 PASS |
+| Actual recipe integration | real recipes, groups, output stacks, stations/conditions, target roots, longer graph | 8/8 PASS |
+
+### Full Regression and Performance
+
+- Build: PASS, 0 warnings / 0 errors.
+- M4.1 Planner Foundation: 14/14 PASS, 8.075 ms.
+- M4.2 Recursive Planner: 22/22 PASS, 41.204 ms.
+- M4.3 Recipe Alternatives: 25/25 PASS, 17.572 ms.
+- M4.4 Resource Alternatives: 20/20 PASS, 13.194 ms.
+- M4 Finalization synthetic: 24/24 PASS, 4.250 ms.
+- Actual Terraria recipe integration: 8/8 PASS, 158.272 ms total, including dynamic candidate discovery and validation.
+- Representative actual extraction/planning: Gold Bar 0.120/0.243 ms; Healing Potion 11.675/0.170 ms with 3 steps; Iron Pickaxe 12.532/1.019 ms with 11 branches; Cell Phone 0.419/0.757 ms with 6 branches.
+- tModLoader 1.4.4.9 + 2026.06.3.6 dedicated load: PASS, `Mod Load Completed in 12422ms`; stopped at world selection and no world/resource state was changed.
+
+### Release Audit
+
+| Original stage | Final requirement | Implementation/tests | Status |
+| --- | --- | --- | --- |
+| 4.1 | contracts, quantities, immutable Ledger, AND, atomic failure | planner foundation + 14 tests | PASS |
+| 4.2 | recursion, intermediate production, deficit/surplus, frontier | recursive core + 22 tests | PASS |
+| 4.3 | recipe OR and complete-route user choice | alternative decisions + 25 tests | PASS |
+| 4.4 | concrete Recipe Group allocation | allocation/backtracking suite | PASS |
+| 4.5 | shared finite-resource competition | one evolving immutable Ledger + regressions | PASS |
+| 4.6 | general planner-owned backtracking | recipe/resource branches + isolation tests | PASS |
+| 4.7 | cycle, truncation, depth, budget, deterministic safety | C/TR/B suites | PASS |
+| 4.8 | diagnostics, real integration, performance hardening | diagnostics + 8 actual cases | PASS |
+
+### Architecture Verdict and Deferred Scope
+
+- Planner reads graph/subgraph, immutable Resolution, choices, limits, and logical Ledger only. It contains no `Player`, inventory, `adjTile`, `Main.recipe`, third-party mod, runtime mutation, source allocation, transaction, consumption, item spawning, execution, or UI dependency.
+- Actual-recipe discovery and `Recipe.Mod` ownership checks live only in load-time/debug integration code, outside Planner Core.
+- Abandoned branches do not pollute committed output; explicit choices never automatically switch; canonical ordering removes incidental dictionary/hash iteration behavior.
+- Milestone 4 is complete. M5 may add source-level allocation, live revalidation, transactional consume/craft/commit/rollback and race handling. UI, third-party adapters, and optimization/preferences remain separate later work.
+
 ## 2026-08-24 - Milestone 4.4: Resource Alternatives and Planner Backtracking
 
 ### Search and Decision Semantics
@@ -710,6 +780,10 @@ Frontier 保留 item、requirement、required/available/deficit、blocking recip
 - Milestone 4.1: `14/14` PASS in `7.908 ms`; Milestone 4.2: `22/22` PASS in `42.293 ms`; Milestone 4.3: `25/25` PASS in `15.750 ms`; Milestone 4.4: `20/20` PASS in `5.955 ms`.
 - Dynamic/resource synthetic validation also passed; resource-source validation took `4.131 ms` and the existing dynamic suite took `32.006 ms`.
 - No real inventory, storage source, world resource, or Terraria runtime crafting state was consumed or modified.
+
+## 2026-08-24 - Milestone 4 Final Release Status
+
+The Finalization audit and validation record above is authoritative over the historical milestone entries: all Original 4.1-4.8 requirements and the added target-level planning requirements are PASS. The release verdict is **Milestone 4 COMPLETE**. The next implementation boundary is M5 transactional execution; this commit contains no M5 execution work.
 
 - `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
 - tModLoader `1.4.4.9+2026.06.3.6` server load-session：SUCCESS；all previous validations plus 22/22 recursive tests passed。

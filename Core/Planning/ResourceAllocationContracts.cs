@@ -119,4 +119,9 @@ public sealed record PlanningSearchStatistics(
 	int MaximumBranchExpansions,
 	bool BudgetExhausted,
 	int SuccessfulPlanCount,
-	int FailedPlanCount);
+	int FailedPlanCount,
+	int RecipeBranchExpansions = 0,
+	int ResourceAllocationBranchExpansions = 0,
+	int BacktrackedBranchCount = 0,
+	int RecipeDecisionCount = 0,
+	int ResourceAllocationDecisionCount = 0);

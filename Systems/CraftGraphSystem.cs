@@ -70,6 +70,12 @@ public sealed class CraftGraphSystem : ModSystem
 
 		ResourceAlternativeSyntheticReport resourceAlternativeReport = ResourceAlternativeSyntheticTests.Run();
 		Mod.Logger.Info(CraftResolutionDiagnostics.FormatResourceAlternativeValidation(resourceAlternativeReport));
+
+		PlannerFinalizationSyntheticReport finalizationReport = PlannerFinalizationSyntheticTests.Run();
+		Mod.Logger.Info(CraftResolutionDiagnostics.FormatPlannerFinalizationValidation(finalizationReport));
+
+		RealRecipeIntegrationReport realRecipeReport = RealRecipeIntegrationTests.Run(Current, CurrentAnalysis);
+		Mod.Logger.Info(CraftResolutionDiagnostics.FormatRealRecipeIntegration(realRecipeReport, Lang.GetItemNameValue));
 	}
 
 	public override void Unload()
