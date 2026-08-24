@@ -678,6 +678,39 @@ Frontier 保留 item、requirement、required/available/deficit、blocking recip
 
 ### Historical Milestone 4.2 Build and Runtime Result
 
+## 2026-08-24 - Milestone 4.4: Resource Alternatives and Planner Backtracking
+
+### Search and Decision Semantics
+
+- Replaced local-only alternative evaluation with one bounded graph-constrained root-continuation search core while retaining `RecursiveSinglePathPlanner` as a compatibility façade.
+- Planner-owned recipe candidates are evaluated through the remaining root plan. Only complete root-successful candidates are `FullyViable`; a later sibling failure can backtrack an earlier automatic recipe decision.
+- Explicit recipe choices are hard constraints. Their internal Recipe Group allocations may still backtrack, but the selected recipe cannot be replaced; later failure is reported as `ExplicitChoiceFailed`.
+- Result aggregation exposes only the deterministic first actionable recipe choice per request. Subsequent choices appear after immutable explicit-choice re-planning.
+- Added a configurable deterministic `MaximumBranchExpansions` safety boundary and structured `SearchBudgetBoundary` evidence.
+
+### Concrete Recipe Group Allocation
+
+- Recipe Group requirements now reserve concrete accepted ItemTypes from the shared immutable `VirtualResourceLedger`; iconic items are not treated as resources.
+- Allocation supports split and mixed quantities, multiple group requirements, root-continuation backtracking, recursive production of accepted members present in the target subgraph, and virtual surplus reuse.
+- Exact and group requirements share reservations, preventing double counting. Routine allocation remains planner-owned rather than becoming a user preference question.
+- Allocation provenance records stable decision identity, group metadata, accepted ItemTypes, required total, concrete quantities, reservations, candidate outcome, and selected allocation.
+- Search is bounded and demand-driven using deterministic accepted-type priority rotations; it does not enumerate all integer partitions or claim an optimal allocation.
+
+### Graph Boundary and Validation
+
+- `TargetSubgraphExtractor` now includes canonical accepted Recipe Group member ItemNodes and their producer branches, without reading `Main.recipe` during planning.
+- Added 20 M4.4 synthetic scenarios covering classic earlier-choice backtracking, root-success aggregation, explicit no-fallback, split/mixed allocation, exact-resource preservation, OR/group interaction, nested backtracking, atomic failure, deferred semantics, recursive group production, surplus, double-count prevention, budget exhaustion, determinism, and sequential user choices.
+- Updated M4.2/M4.3 regression expectations only where M4.4 intentionally supersedes group deferral and local-only viability semantics.
+- No UI, execution, source allocation, inventory mutation, scoring, optimization, preference memory, or cycle solving was added.
+
+### Validation Status
+
+- Full `dotnet build GraphCraft.csproj --nologo`: SUCCESS, 0 warnings / 0 errors.
+- Real tModLoader `1.4.4.9+2026.06.3.6` server load-session: SUCCESS; `Mod Load Completed in 12755ms`, then stopped at `Choose World` without entering a world.
+- Milestone 4.1: `14/14` PASS in `7.908 ms`; Milestone 4.2: `22/22` PASS in `42.293 ms`; Milestone 4.3: `25/25` PASS in `15.750 ms`; Milestone 4.4: `20/20` PASS in `5.955 ms`.
+- Dynamic/resource synthetic validation also passed; resource-source validation took `4.131 ms` and the existing dynamic suite took `32.006 ms`.
+- No real inventory, storage source, world resource, or Terraria runtime crafting state was consumed or modified.
+
 - `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
 - tModLoader `1.4.4.9+2026.06.3.6` server load-session：SUCCESS；all previous validations plus 22/22 recursive tests passed。
 - Validation server process was stopped after the complete report；no world was entered and no real resource was consumed。

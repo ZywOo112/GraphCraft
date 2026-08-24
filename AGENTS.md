@@ -169,6 +169,23 @@
 
 ## Future Visualization Direction
 
+## Milestone 4.4 Constraints
+
+- `GraphConstrainedCraftPlanner` is the single recursive planning core; `RecursiveSinglePathPlanner` remains only as a compatibility entry point.
+- Recipe alternatives and Recipe Group resource allocations are separate domain decisions even though both use immutable search branches.
+- Candidate recipe viability is defined by complete root continuation. A locally successful candidate that prevents a later requirement is not `FullyViable`.
+- Planner-owned recipe and resource branches may backtrack. An `ExplicitRecipeChoice` is a hard request constraint and must never be replaced or bypassed.
+- Exactly one complete root-successful recipe candidate is auto-selected; two or more produce `UserChoiceRequired`, limited to those root-successful candidates.
+- Only the deterministic first actionable recipe decision is exposed per request. A fresh request carrying an explicit choice may expose the next decision.
+- Recipe Group requirements reserve concrete accepted `ItemType` quantities. The iconic item is never a synthetic reservation.
+- Concrete group allocation may be split, may recursively produce an accepted member inside the target subgraph, preserves virtual surplus, and shares the same Ledger with exact requirements.
+- Routine resource allocation is planner-owned and never becomes `UserChoiceRequired`; its structured decision/candidate evidence remains available for diagnostics and preview.
+- Group search uses bounded deterministic priority rotations and demand-driven production, not exhaustive integer-partition enumeration.
+- `MaximumBranchExpansions` is a deterministic safety boundary. Exhaustion returns structured `SearchBudgetBoundary` unless an already completed unique route is sufficient under result aggregation semantics.
+- The Planner still reads only `TargetCraftSubgraph`, `ResolutionSnapshot`, and immutable Ledger state. It does not scan `Main.recipe`, allocate concrete storage sources, execute, mutate runtime resources, score, or optimize.
+- Group member traversal is materialized by `TargetSubgraphExtractor` from `RecipeGroupInfo.AcceptedItemTypes`; producer discovery remains canonical and subgraph-constrained.
+- Milestone 4.4 implements no UI, source-level allocation, transaction/executor, preference memory, scoring, shortest-path policy, or general cycle solving.
+
 - Visualization 是 GraphCraft 的核心产品能力，不是装饰性功能。
 - 未来 UI 应组合 `TargetCraftSubgraph` 与 `ResolutionSnapshot`，取得 nodes、typed edges、quantities、constraints、alternatives、SCC、shared identity、truncation 和动态 evidence。
 - 当前可安全显示 `Owned`、`UnownedAtomic`、`UnownedDerived`、direct satisfaction、station/condition blocking；最终 Missing 与 recursive Craftable 必须等待 Planner。

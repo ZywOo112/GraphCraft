@@ -8,6 +8,24 @@ namespace GraphCraft.Debug;
 
 internal static class CraftResolutionDiagnostics
 {
+	public static string FormatResourceAlternativeValidation(ResourceAlternativeSyntheticReport report) => $"""
+		[GraphCraft] Milestone 4.4 resource alternatives and planner backtracking validation
+		  Root-continuation Recipe backtracking: PASS
+		  Root-successful choice aggregation and explicit hard constraints: PASS
+		  Concrete split/mixed Recipe Group allocation: PASS
+		  Group allocation backtracking and exact-resource preservation: PASS
+		  Recursive group-member production and virtual surplus: PASS
+		  Group/exact double-count prevention: PASS
+		  Nested search, atomic failure, deferred semantics, and graph constraints: PASS
+		  Search budget boundary and deterministic replay: PASS
+		  Sequential actionable user decisions: PASS
+		  Backtracking example: status={report.BacktrackingExample.Status}, decisions={report.BacktrackingExample.Decisions.Count}, steps={report.BacktrackingExample.Steps.Count}
+		  Group example: status={report.GroupAllocationExample.Status}, allocation={report.GroupAllocationExample.GroupAllocations.Single().DeterministicSignature}
+		  Budget example: status={report.BudgetExample.Status}, expanded={report.BudgetExample.SearchStatistics.ExpandedBranches}/{report.BudgetExample.SearchStatistics.MaximumBranchExpansions}
+		  PassedRequiredTests: {report.PassedRequiredTestCount}/20
+		  ResourceAlternativeValidationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}
+	""";
+
 	public static string FormatAlternativeDecisionValidation(AlternativeDecisionSyntheticReport report)
 	{
 		AlternativeDecision choice = report.ChoiceExample.PendingDecision
@@ -26,12 +44,12 @@ internal static class CraftResolutionDiagnostics
 		  Test 10 Blocked + success auto-select: PASS
 		  Test 11 Recursive candidate fully evaluated: PASS
 		  Test 12 ReadyNow respects evolved Ledger: PASS
-		  Test 13 Local alternatives exposed before later sibling: PASS
+		  Test 13 Local alternatives backtrack for later sibling: PASS
 		  Test 14 Explicit bad local choice does not backtrack: PASS
 		  Test 15 Explicit good local choice succeeds: PASS
-		  Test 16 Nested choice provenance: PASS
-		  Test 17 Viable + nested choice auto-selects viable: PASS
-		  Test 18 Viable + Recipe Group deferred auto-selects viable: PASS
+		  Test 16 First actionable nested choice provenance: PASS
+		  Test 17 Complete outer routes define user choice: PASS
+		  Test 18 Viable + deferred constraint auto-selects viable: PASS
 		  Test 19 Failed + blocked candidates preserve frontiers: PASS
 		  Test 20 Deferred/blocked is not proven impossible: PASS
 		  Test 21 Unique producer regression: PASS
@@ -60,7 +78,7 @@ internal static class CraftResolutionDiagnostics
 		  Test 7 Zero producer structured frontier: PASS
 		  Test 8 Multiple fully viable producers require user choice: PASS
 		  Test 9 One viable plus one blocked producer auto-selected: PASS
-		  Test 10 Recipe Group remains deferred: PASS
+		  Test 10 Recipe Group concrete allocation regression: PASS
 		  Test 11 NeedsIngredients recursively resolved: PASS
 		  Test 12 ReadyNow does not override evolved Ledger: PASS
 		  Test 13 BlockedByStation evidence propagated: PASS

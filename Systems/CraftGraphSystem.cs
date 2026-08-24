@@ -67,6 +67,9 @@ public sealed class CraftGraphSystem : ModSystem
 
 		AlternativeDecisionSyntheticReport alternativeReport = AlternativeDecisionSyntheticTests.Run();
 		Mod.Logger.Info(CraftResolutionDiagnostics.FormatAlternativeDecisionValidation(alternativeReport));
+
+		ResourceAlternativeSyntheticReport resourceAlternativeReport = ResourceAlternativeSyntheticTests.Run();
+		Mod.Logger.Info(CraftResolutionDiagnostics.FormatResourceAlternativeValidation(resourceAlternativeReport));
 	}
 
 	public override void Unload()

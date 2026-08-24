@@ -81,6 +81,8 @@ public sealed class AlternativeCandidateResult
 		IReadOnlyList<PlannedCraftStep> previewSteps,
 		IReadOnlyList<VirtualResourceReservation> previewReservations,
 		IReadOnlyList<VirtualResourceProduction> previewProductions,
+		IReadOnlyList<RecipeGroupAllocation> previewGroupAllocations,
+		IReadOnlyList<ResourceAllocationDecision> previewResourceAllocationDecisions,
 		PlanningFrontier? frontier,
 		IReadOnlyList<AlternativeDecision> decisions,
 		AlternativeDecision? nestedDecision,
@@ -96,6 +98,8 @@ public sealed class AlternativeCandidateResult
 		PreviewSteps = new ReadOnlyCollection<PlannedCraftStep>(previewSteps.ToArray());
 		PreviewReservations = new ReadOnlyCollection<VirtualResourceReservation>(previewReservations.ToArray());
 		PreviewProductions = new ReadOnlyCollection<VirtualResourceProduction>(previewProductions.ToArray());
+		PreviewGroupAllocations = new ReadOnlyCollection<RecipeGroupAllocation>(previewGroupAllocations.ToArray());
+		PreviewResourceAllocationDecisions = new ReadOnlyCollection<ResourceAllocationDecision>(previewResourceAllocationDecisions.ToArray());
 		Frontier = frontier;
 		Decisions = new ReadOnlyCollection<AlternativeDecision>(decisions.ToArray());
 		NestedDecision = nestedDecision;
@@ -121,6 +125,10 @@ public sealed class AlternativeCandidateResult
 	public IReadOnlyList<VirtualResourceReservation> PreviewReservations { get; }
 
 	public IReadOnlyList<VirtualResourceProduction> PreviewProductions { get; }
+
+	public IReadOnlyList<RecipeGroupAllocation> PreviewGroupAllocations { get; }
+
+	public IReadOnlyList<ResourceAllocationDecision> PreviewResourceAllocationDecisions { get; }
 
 	public PlanningFrontier? Frontier { get; }
 

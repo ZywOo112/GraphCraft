@@ -11,15 +11,23 @@ namespace GraphCraft.Core.Planning;
 public sealed record RecursivePlanningLimits
 {
 	public const int DefaultMaximumDependencyDepth = 64;
+	public const int DefaultMaximumBranchExpansions = 4096;
 
-	public RecursivePlanningLimits(int maximumDependencyDepth = DefaultMaximumDependencyDepth)
+	public RecursivePlanningLimits(
+		int maximumDependencyDepth = DefaultMaximumDependencyDepth,
+		int maximumBranchExpansions = DefaultMaximumBranchExpansions)
 	{
 		if (maximumDependencyDepth < 0)
 			throw new ArgumentOutOfRangeException(nameof(maximumDependencyDepth));
+		if (maximumBranchExpansions <= 0)
+			throw new ArgumentOutOfRangeException(nameof(maximumBranchExpansions));
 		MaximumDependencyDepth = maximumDependencyDepth;
+		MaximumBranchExpansions = maximumBranchExpansions;
 	}
 
 	public int MaximumDependencyDepth { get; }
+
+	public int MaximumBranchExpansions { get; }
 }
 
 public enum RecursivePlanStatus
@@ -40,7 +48,10 @@ public enum RecursivePlanStatus
 	AlternativeResolutionDeferred,
 	NoViableAlternative,
 	InvalidExplicitChoice,
-	ExplicitChoiceFailed
+	ExplicitChoiceFailed,
+	NoViablePlan,
+	NoViableResourceAllocation,
+	SearchBudgetBoundary
 }
 
 public enum PlanningFrontierKind
@@ -56,7 +67,9 @@ public enum PlanningFrontierKind
 	UnknownConstraint,
 	CycleBoundary,
 	PlanningDepthBoundary,
-	InvalidExplicitChoice
+	InvalidExplicitChoice,
+	NoViableResourceAllocation,
+	SearchBudgetBoundary
 }
 
 public sealed record PlanningPathEntry(
@@ -131,7 +144,8 @@ public sealed record PlannedIngredientUse(
 	long AvailableBeforeExpansion,
 	long DeficitQuantity,
 	long AvailableBeforeReservation,
-	long RemainingAfterReservation);
+	long RemainingAfterReservation,
+	RecipeGroupAllocation? GroupAllocation = null);
 
 public sealed class PlannedCraftStep
 {
@@ -242,7 +256,10 @@ public sealed class RecursiveRecipePlanResult
 		IReadOnlyList<VirtualResourceProduction> productions,
 		PlanningFrontier? frontier,
 		IReadOnlyList<AlternativeDecision>? decisions = null,
-		IReadOnlyList<RecipeChoiceApplication>? appliedChoices = null)
+		IReadOnlyList<RecipeChoiceApplication>? appliedChoices = null,
+		IReadOnlyList<RecipeGroupAllocation>? groupAllocations = null,
+		IReadOnlyList<ResourceAllocationDecision>? resourceAllocationDecisions = null,
+		PlanningSearchStatistics? searchStatistics = null)
 	{
 		SelectedRootRecipe = selectedRootRecipe;
 		RequestedOutputQuantity = requestedOutputQuantity;
@@ -255,6 +272,9 @@ public sealed class RecursiveRecipePlanResult
 		Frontier = frontier;
 		Decisions = new ReadOnlyCollection<AlternativeDecision>((decisions ?? Array.Empty<AlternativeDecision>()).ToArray());
 		AppliedChoices = new ReadOnlyCollection<RecipeChoiceApplication>((appliedChoices ?? Array.Empty<RecipeChoiceApplication>()).ToArray());
+		GroupAllocations = new ReadOnlyCollection<RecipeGroupAllocation>((groupAllocations ?? Array.Empty<RecipeGroupAllocation>()).ToArray());
+		ResourceAllocationDecisions = new ReadOnlyCollection<ResourceAllocationDecision>((resourceAllocationDecisions ?? Array.Empty<ResourceAllocationDecision>()).ToArray());
+		SearchStatistics = searchStatistics ?? new PlanningSearchStatistics(0, 0, false, 0, 0);
 	}
 
 	public RecipeNode SelectedRootRecipe { get; }
@@ -280,6 +300,12 @@ public sealed class RecursiveRecipePlanResult
 	public IReadOnlyList<AlternativeDecision> Decisions { get; }
 
 	public IReadOnlyList<RecipeChoiceApplication> AppliedChoices { get; }
+
+	public IReadOnlyList<RecipeGroupAllocation> GroupAllocations { get; }
+
+	public IReadOnlyList<ResourceAllocationDecision> ResourceAllocationDecisions { get; }
+
+	public PlanningSearchStatistics SearchStatistics { get; }
 
 	public AlternativeDecision? PendingDecision => Decisions.LastOrDefault(decision => !decision.IsResolved);
 }

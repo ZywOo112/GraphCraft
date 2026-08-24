@@ -56,10 +56,12 @@ public static class TargetSubgraphExtractor
 				if (recipeNodes.Contains(producer))
 					continue;
 
-				ItemNode[] newIngredientItems = producer.Ingredients
-					.Select(edge => edge.Source)
-					.Where(ingredient => !itemNodes.Contains(ingredient))
+				ItemNode[] dependencyItems = producer.Ingredients
+					.SelectMany(edge => EnumerateDependencyItems(graph, edge))
 					.Distinct()
+					.ToArray();
+				ItemNode[] newIngredientItems = dependencyItems
+					.Where(ingredient => !itemNodes.Contains(ingredient))
 					.ToArray();
 				int requiredNewNodes = 1 + newIngredientItems.Length;
 				if (itemNodes.Count + recipeNodes.Count + requiredNewNodes > options.MaximumGraphNodes) {
@@ -75,11 +77,13 @@ public static class TargetSubgraphExtractor
 
 				foreach (IngredientEdge ingredient in producer.Ingredients) {
 					ingredientEdges.Add(ingredient);
-					bool isNewItem = itemNodes.Add(ingredient.Source);
-					AddDepth(ingredient.Source, depth + 1);
-					includedComponentIds.Add(analysis.GetComponentId(ingredient.Source));
+				}
+				foreach (ItemNode dependencyItem in dependencyItems) {
+					bool isNewItem = itemNodes.Add(dependencyItem);
+					AddDepth(dependencyItem, depth + 1);
+					includedComponentIds.Add(analysis.GetComponentId(dependencyItem));
 					if (isNewItem)
-						pendingItems.Enqueue((ingredient.Source, depth + 1));
+						pendingItems.Enqueue((dependencyItem, depth + 1));
 				}
 			}
 		}
@@ -121,6 +125,18 @@ public static class TargetSubgraphExtractor
 			GraphNodeKey key = GraphNodeKey.From(node);
 			if (!depthByNode.TryGetValue(key, out int existingDepth) || depth < existingDepth)
 				depthByNode[key] = depth;
+		}
+	}
+
+	private static IEnumerable<ItemNode> EnumerateDependencyItems(CraftGraph graph, IngredientEdge ingredient)
+	{
+		yield return ingredient.Source;
+		foreach (int itemType in ingredient.AcceptedRecipeGroups
+			.SelectMany(group => group.AcceptedItemTypes)
+			.Distinct()
+			.OrderBy(itemType => itemType)) {
+			if (graph.ItemsByType.TryGetValue(itemType, out ItemNode? item))
+				yield return item;
 		}
 	}
 

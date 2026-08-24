@@ -38,7 +38,7 @@ internal static class AlternativeDecisionSyntheticTests
 		TestBlockedPlusSuccessAutoSelects();
 		TestRecursivelyViableCandidate();
 		TestReadyNowUsesEvolvedLedger();
-		TestLocalAlternativesRemainChoiceBeforeLaterSibling();
+		TestLocalAlternativesBacktrackForLaterSibling();
 		TestExplicitBadLocalChoiceDoesNotFallbackAfterLaterFailure();
 		TestExplicitGoodLocalChoiceSucceeds();
 		TestNestedDecisionProvenance();
@@ -78,7 +78,7 @@ internal static class AlternativeDecisionSyntheticTests
 			"Test 2 did not expose two viable candidates.");
 		Assert(decision.UserSelectableCandidates.Count == 2 && decision.UserSelectableCandidates.All(candidate => candidate.Status == AlternativeCandidateStatus.FullyViable),
 			"Test 2 exposed a non-viable candidate as a user selection.");
-		Assert(result.Steps.Count == 0 && decision.Candidates.All(candidate => candidate.PreviewSteps.Count == 1),
+		Assert(result.Steps.Count == 0 && decision.Candidates.All(candidate => candidate.PreviewSteps.Count >= 2),
 			"Test 2 mixed previews with committed steps.");
 		return result;
 	}
@@ -197,28 +197,28 @@ internal static class AlternativeDecisionSyntheticTests
 			"Test 12 allowed stale ReadyNow evidence to override the evolved Ledger.");
 	}
 
-	private static void TestLocalAlternativesRemainChoiceBeforeLaterSibling()
+	private static void TestLocalAlternativesBacktrackForLaterSibling()
 	{
 		LocalTradeoffFixture f = LocalTradeoff();
 		RecursiveRecipePlanResult result = Plan(f.Fixture);
-		Assert(result.Status == RecursivePlanStatus.UserChoiceRequired && RequiredDecision(result).FullyViableCandidateCount == 2,
-			"Test 13 performed forbidden global lookahead/backtracking instead of exposing the local choice.");
+		Assert(result.Succeeded && result.Decisions.Single().SelectedRecipe == f.LeadBranch,
+			"Test 13 did not backtrack from the locally viable Iron branch to the root-successful Lead branch.");
 	}
 
 	private static void TestExplicitBadLocalChoiceDoesNotFallbackAfterLaterFailure()
 	{
 		LocalTradeoffFixture f = LocalTradeoff();
-		AlternativeDecision decision = RequiredDecision(Plan(f.Fixture));
+		AlternativeDecision decision = Plan(f.Fixture).Decisions.Single();
 		RecursiveRecipePlanResult result = Plan(f.Fixture, new ExplicitRecipeChoice(decision.DecisionId, f.IronBranch));
-		Assert(result.Status == RecursivePlanStatus.InsufficientTerminalResource && result.AppliedChoices.Single().SelectedRecipe == f.IronBranch,
+		Assert(result.Status == RecursivePlanStatus.ExplicitChoiceFailed,
 			"Test 14 did not preserve the explicit local choice through a later sibling failure.");
-		Assert(result.Steps.Count == 0 && result.AppliedChoices.All(choice => !ReferenceEquals(choice.SelectedRecipe, f.LeadBranch)), "Test 14 silently fell back after later failure.");
+		Assert(result.Steps.Count == 0 && result.Decisions.Single().SelectedRecipe == f.IronBranch, "Test 14 silently fell back after later failure.");
 	}
 
 	private static void TestExplicitGoodLocalChoiceSucceeds()
 	{
 		LocalTradeoffFixture f = LocalTradeoff();
-		AlternativeDecision decision = RequiredDecision(Plan(f.Fixture));
+		AlternativeDecision decision = Plan(f.Fixture).Decisions.Single();
 		RecursiveRecipePlanResult result = Plan(f.Fixture, new ExplicitRecipeChoice(decision.DecisionId, f.LeadBranch));
 		Assert(result.Succeeded && result.Steps.Any(step => ReferenceEquals(step.Recipe, f.LeadBranch)), "Test 15 explicit resource-preserving branch did not succeed.");
 	}
@@ -231,18 +231,12 @@ internal static class AlternativeDecisionSyntheticTests
 		RecipeNode nested = Add(b, 10, 830, I(831));
 		Add(b, 20, 830, I(834));
 		RecipeNode root = Add(b, 30, RootOutput + 15, I(830));
-		AlternativeDecision outer = RequiredDecision(Plan(b.Build(root, Context((832, 1), (833, 1)))));
-		Assert(outer.FullyViableCandidateCount == 0 && outer.State == AlternativeDecisionState.UserChoiceRequired && outer.UserSelectableCandidates.Count == 0 &&
-			outer.Candidates.Any(candidate => candidate.Status == AlternativeCandidateStatus.RequiresUserChoice) &&
-			outer.Candidates.Any(candidate => candidate.Status == AlternativeCandidateStatus.Failed),
-			"Test 16 did not propagate the required nested choice when no fully viable outer candidate existed.");
-		AlternativeCandidateResult nestedCandidate = outer.Candidates.Single(c => ReferenceEquals(c.Recipe, nested));
-		AlternativeDecision nestedDecision = nestedCandidate.NestedDecision
-			?? throw new InvalidOperationException("Test 16 expected nested decision provenance.");
-		Assert(nestedCandidate.Status == AlternativeCandidateStatus.RequiresUserChoice && nestedDecision.ConsumingRecipe == nested,
-			"Test 16 did not preserve nested decision provenance on the candidate.");
-		Assert(nestedCandidate.Decisions.Single().DecisionId == nestedDecision.DecisionId,
-			"Test 16 did not retain the nested decision in candidate provenance.");
+		RecursiveRecipePlanResult result = Plan(b.Build(root, Context((832, 1), (833, 1))));
+		AlternativeDecision nestedDecision = RequiredDecision(result);
+		AlternativeDecision outer = result.Decisions.First();
+		Assert(outer.State == AlternativeDecisionState.AutoSelectedOnlyViable && outer.SelectedRecipe == nested &&
+			nestedDecision.ConsumingRecipe == nested && nestedDecision.FullyViableCandidateCount == 2,
+			"Test 16 did not expose the first root-actionable nested decision after resolving the outer branch.");
 	}
 
 	private static void TestViablePlusNestedChoiceAutoSelects()
@@ -255,23 +249,24 @@ internal static class AlternativeDecisionSyntheticTests
 		RecipeNode root = Add(b, 30, RootOutput + 16, I(840));
 		RecursiveRecipePlanResult result = Plan(b.Build(root, Context((842, 1), (843, 1), (844, 1))));
 		AlternativeDecision decision = result.Decisions.Single(candidateDecision => ReferenceEquals(candidateDecision.ConsumingRecipe, root));
-		Assert(result.Succeeded && decision.State == AlternativeDecisionState.AutoSelectedOnlyViable && ReferenceEquals(decision.SelectedRecipe, viable),
-			"Test 17 did not auto-select the unique fully viable candidate.");
-		Assert(decision.Candidates.Any(c => c.Recipe == nested && c.Status == AlternativeCandidateStatus.RequiresUserChoice), "Test 17 nested-choice classification mismatch.");
+		Assert(result.Status == RecursivePlanStatus.UserChoiceRequired && decision.State == AlternativeDecisionState.UserChoiceRequired &&
+			decision.UserSelectableCandidates.Select(candidate => candidate.Recipe).Contains(viable) &&
+			decision.UserSelectableCandidates.Select(candidate => candidate.Recipe).Contains(nested),
+			"Test 17 did not treat both complete root-successful outer candidates as selectable.");
 	}
 
 	private static void TestViablePlusRecipeGroupDeferredAutoSelects()
 	{
 		var b = Builder();
 		RecipeNode viable = Add(b, 10, 850, I(851));
-		Add(b, 20, 850, new Spec(852, 1, true));
+		Add(b, 20, 850, RecipeLocalState.UnknownConstraint, I(852));
 		RecipeNode root = Add(b, 30, RootOutput + 17, I(850));
 		RecursiveRecipePlanResult result = Plan(b.Build(root, Context((851, 1), (852, 1))));
 		AlternativeDecision decision = result.Decisions.Single();
 		Assert(result.Succeeded && decision.State == AlternativeDecisionState.AutoSelectedOnlyViable && ReferenceEquals(decision.SelectedRecipe, viable),
 			"Test 18 did not auto-select the unique fully viable candidate beside a deferred candidate.");
 		Assert(decision.Candidates.Any(c => c.Status == AlternativeCandidateStatus.Deferred),
-			"Test 18 did not retain Recipe Group deferral in decision provenance.");
+			"Test 18 did not retain deferred constraint evidence in decision provenance.");
 	}
 
 	private static void TestFailedAndBlockedPreserveFrontiers()
@@ -291,7 +286,7 @@ internal static class AlternativeDecisionSyntheticTests
 	private static void TestDeferredAndBlockedIsNotImpossible()
 	{
 		var b = Builder();
-		Add(b, 10, 870, new Spec(871, 1, true));
+		Add(b, 10, 870, RecipeLocalState.UnknownConstraint, I(871));
 		Add(b, 20, 870, RecipeLocalState.BlockedByCondition, I(872));
 		RecipeNode root = Add(b, 30, RootOutput + 19, I(870));
 		RecursiveRecipePlanResult result = Plan(b.Build(root, Context((871, 1), (872, 1))));
@@ -334,7 +329,7 @@ internal static class AlternativeDecisionSyntheticTests
 		RecursiveRecipePlanResult result = Plan(fixture);
 		Assert(context.Resources.GetAvailableCount(901) == 1 && source.GetCount(901) == 1 && fixture.Ledger.ReservedCounts.Count == 0,
 			"Test 23 mutated source, aggregate, or input Ledger snapshots.");
-		Assert(result.Steps.Count == 0 && result.PendingDecision?.Candidates.All(c => c.PreviewSteps.Count == 1 && c.ResultLedger is not null) == true,
+		Assert(result.Steps.Count == 0 && result.PendingDecision?.Candidates.All(c => c.PreviewSteps.Count >= 2 && c.ResultLedger is not null) == true,
 			"Test 23 did not keep candidate previews separate and immutable from committed output.");
 		AlternativeDecision decision = RequiredDecision(result);
 		RecursiveRecipePlanResult selected = Plan(fixture, new ExplicitRecipeChoice(decision.DecisionId, decision.Candidates[1].Recipe));
@@ -355,7 +350,7 @@ internal static class AlternativeDecisionSyntheticTests
 		var b = Builder();
 		Add(b, 10, 920, I(921));
 		Add(b, 20, 920, I(922));
-		Add(b, 30, 920, new Spec(923, 1, true));
+		Add(b, 30, 920, RecipeLocalState.UnknownConstraint, I(923));
 		RecipeNode root = Add(b, 40, RootOutput + 24, I(920));
 		AlternativeDecision decision = RequiredDecision(Plan(b.Build(root, Context((921, 1), (922, 1), (923, 1)))));
 		Assert(decision.State == AlternativeDecisionState.UserChoiceRequired && decision.Candidates.Count == 3 &&

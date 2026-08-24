@@ -33,7 +33,7 @@ internal static class RecursivePlannerSyntheticTests
 		TestZeroProducerFrontier();
 		RecursiveRecipePlanResult frontier = TestMultipleProducersDeferred();
 		TestMultipleProducersWithOneReadyStillDeferred();
-		TestRecipeGroupStillDeferred();
+		TestRecipeGroupConcreteAllocation();
 		TestNeedsIngredientsIsRecursivelyResolvable();
 		TestReadyNowDoesNotOverrideLedger();
 		TestBlockedByStationPropagation();
@@ -183,16 +183,15 @@ internal static class RecursivePlannerSyntheticTests
 			"Test 9 did not auto-select the only fully viable producer after proving the other blocked.");
 	}
 
-	private static void TestRecipeGroupStillDeferred()
+	private static void TestRecipeGroupConcreteAllocation()
 	{
 		var builder = new SyntheticGraphBuilder();
 		builder.AddRecipe(382, 1, RecipeLocalState.NeedsIngredients, true, I(381, 1, group: true));
 		RecipeNode root = builder.AddRecipe(383, 1, RecipeLocalState.NeedsIngredients, true, I(382, 1));
 		RecursiveRecipePlanResult result = Plan(builder.Build(root, Context((381, 20))));
-		Assert(result.Status == RecursivePlanStatus.DeferredRecipeGroupAllocation &&
-			result.Frontier?.Kind == PlanningFrontierKind.DeferredRecipeGroupAllocation &&
-			result.Steps.Count == 0 && result.Reservations.Count == 0,
-			"Test 10 crossed the Recipe Group allocation boundary.");
+		Assert(result.Succeeded && result.GroupAllocations.Count == 1 &&
+			result.GroupAllocations[0].ConcreteAllocations.Single().ItemType == 381,
+			"Test 10 did not concretely allocate the Recipe Group requirement.");
 	}
 
 	private static void TestNeedsIngredientsIsRecursivelyResolvable()
@@ -478,6 +477,8 @@ internal static class RecursivePlannerSyntheticTests
 				IReadOnlyList<RecipeGroupInfo> groups = spec.IsGroup
 					? new[] { new RecipeGroupInfo(8000 + ordinal, spec.ItemType, new[] { spec.ItemType, spec.ItemType + 10000 }, "Synthetic Group") }
 					: Array.Empty<RecipeGroupInfo>();
+				if (spec.IsGroup)
+					Item(spec.ItemType + 10000);
 				var edge = new IngredientEdge(ordinal, source, recipe, spec.Amount, groups);
 				recipe.AddIngredient(edge);
 				source.AddConsumer(recipe);
@@ -496,11 +497,7 @@ internal static class RecursivePlannerSyntheticTests
 		{
 			RecipeNode[] recipes = _includedRecipes.ToArray();
 			IngredientEdge[] edges = recipes.SelectMany(recipe => recipe.Ingredients).ToArray();
-			ItemNode[] items = recipes
-				.SelectMany(recipe => recipe.Ingredients.Select(edge => edge.Source).Append(recipe.Result))
-				.Append(root.Result)
-				.Distinct()
-				.ToArray();
+			ItemNode[] items = _items.Values.ToArray();
 			var depths = new Dictionary<GraphNodeKey, int>();
 			foreach (ItemNode item in items)
 				depths[GraphNodeKey.From(item)] = ReferenceEquals(item, root.Result) ? 0 : 1;
@@ -533,13 +530,19 @@ internal static class RecursivePlannerSyntheticTests
 					IsCyclic: false));
 			var ingredientResolutions = edges.ToDictionary(
 				edge => edge,
-				edge => new IngredientResolution(
-					edge,
-					edge.RequiredAmount,
-					context.GetAvailableCount(edge.Source.ItemType),
-					context.GetAvailableCount(edge.Source.ItemType) >= edge.RequiredAmount,
-					edge.AcceptsRecipeGroup ? IngredientResolutionMode.RecipeGroup : IngredientResolutionMode.DirectItem,
-					context.GetResourceEvidence(edge.Source.ItemType)));
+				edge => {
+					int[] types = edge.AcceptsRecipeGroup
+						? edge.AcceptedRecipeGroups.SelectMany(group => group.AcceptedItemTypes).Distinct().ToArray()
+						: new[] { edge.Source.ItemType };
+					int available = types.Sum(context.GetAvailableCount);
+					return new IngredientResolution(
+						edge,
+						edge.RequiredAmount,
+						available,
+						available >= edge.RequiredAmount,
+						edge.AcceptsRecipeGroup ? IngredientResolutionMode.RecipeGroup : IngredientResolutionMode.DirectItem,
+						types.SelectMany(context.GetResourceEvidence).ToArray());
+				});
 			var recipeResolutions = recipes.ToDictionary(
 				recipe => recipe,
 				recipe => CreateRecipeResolution(recipe, _states[recipe], ingredientResolutions));
