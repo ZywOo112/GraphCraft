@@ -15,6 +15,29 @@ namespace GraphCraft.Core.Execution;
 /// </summary>
 public static class CraftExecutionPlanner
 {
+	public static CraftExecutionFinalValidationResult RevalidateExistingPlan(
+		ExecutableTransactionPlan plan,
+		ResolutionSnapshot freshResolution)
+	{
+		ArgumentNullException.ThrowIfNull(plan);
+		ArgumentNullException.ThrowIfNull(freshResolution);
+		if (!ReferenceEquals(freshResolution.SourceSubgraph, plan.LogicalPlan.Request.TargetSubgraph)) {
+			return new CraftExecutionFinalValidationResult(
+				ExecutionPreflightStatus.InvalidLogicalPlan,
+				new[] { Invalid("Final validation does not belong to the executable plan's exact TargetCraftSubgraph.") });
+		}
+
+		IReadOnlyList<ExecutionPreflightIssue> sourceIssues = RevalidateSources(
+			freshResolution.Context.Resources,
+			plan.SourceExpectations);
+		(_, IReadOnlyList<ExecutionPreflightIssue> constraintIssues) =
+			RevalidateRecipeConstraints(freshResolution, plan.Steps);
+		ExecutionPreflightIssue[] issues = sourceIssues.Concat(constraintIssues).ToArray();
+		return new CraftExecutionFinalValidationResult(
+			issues.Length == 0 ? ExecutionPreflightStatus.Ready : StatusFor(issues),
+			new ReadOnlyCollection<ExecutionPreflightIssue>(issues));
+	}
+
 	public static CraftExecutionPreflightResult CreatePreflight(CraftExecutionPreflightRequest request)
 	{
 		ArgumentNullException.ThrowIfNull(request);

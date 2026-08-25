@@ -77,8 +77,14 @@ public sealed class CraftGraphSystem : ModSystem
 		ExecutionDryRunSyntheticReport executionReport = ExecutionDryRunSyntheticTests.Run();
 		Mod.Logger.Info(CraftResolutionDiagnostics.FormatExecutionDryRunValidation(executionReport));
 
+		TransactionalExecutionSyntheticReport transactionReport = TransactionalExecutionSyntheticTests.Run();
+		Mod.Logger.Info(CraftResolutionDiagnostics.FormatTransactionalExecutionValidation(transactionReport));
+
 		RealRecipeIntegrationReport realRecipeReport = RealRecipeIntegrationTests.Run(Current, CurrentAnalysis);
 		Mod.Logger.Info(CraftResolutionDiagnostics.FormatRealRecipeIntegration(realRecipeReport, Lang.GetItemNameValue));
+
+		TransactionalRealRecipeIntegrationReport transactionRecipeReport = TransactionalRealRecipeIntegrationTests.Run(Current);
+		Mod.Logger.Info(CraftResolutionDiagnostics.FormatTransactionalRealRecipeIntegration(transactionRecipeReport, Lang.GetItemNameValue));
 	}
 
 	public override void Unload()

@@ -836,3 +836,64 @@ The Finalization audit and validation record above is authoritative over the his
 - tModLoader `1.4.4.9+2026.06.3.6` dedicated load-session：SUCCESS；M5.1 `16/16` PASS。
 - resource-source regression `7/7`、M4.1 `14/14`、M4.2 `22/22`、M4.3 `25/25`、M4.4 `20/20`、M4 finalization `24/24` 和 actual Terraria recipes `8/8` 全部继续 PASS。
 - `Mod Load Completed in 1111ms`；进程随后在 world selection 停止，没有进入世界或修改真实玩家/resource state。
+
+## 2026-08-25 - Milestone 5.2: Transactional Execution
+
+### Terraria/tModLoader Semantics Investigation
+
+- Current Terraria `Recipe.Create()` clears and rebuilds `RecipeLoader.ConsumedItems`, calls `RecipeLoader.ConsumeIngredient`, and scans its own material locations. GraphCraft therefore does not call it: doing so would discard the concrete SourceId/ItemType allocation already fixed by M4/M5.1.
+- GraphCraft instead calls the public `RecipeLoader.ConsumeIngredient(recipe, iconicIngredientType, ref amount, false)` exactly once per ingredient per recipe repetition, records that actual amount, and distributes it only within the prevalidated concrete M5.1 maximum. This preserves the built-in Alchemy quantity rule and registered consumption hooks without letting vanilla reselect concrete Recipe Group items.
+- Every successful repetition creates `recipe.createItem.Clone()`, applies the normal random prefix path, consumes the exact GraphCraft locators, then invokes `RecipeLoader.OnCraft(output, recipe, consumedItems, destinationStack)`. The consumed list contains full concrete Item clones from external slots and transaction-local production.
+- `ItemLoader.CanStack` and `ItemLoader.TryStackItems` are used at the Vanilla output boundary. Output and rollback operate on full `Item.Clone()` instances rather than reconstructed type/stack pairs.
+- Current automatic compatibility is deliberately limited to vanilla recipes and vanilla ingredient/output Items. Hooks that change output identity/quantity, hooks with external world side effects, destination-stack-dependent mouse behavior, and third-party recipe semantics cannot be proven inventory-transactional and are rejected/deferred rather than approximated.
+
+### Transaction Architecture
+
+```text
+ExecutableTransactionPlan
+  -> final live Resolution revalidation
+  -> exact adapter-owned slot preparation
+  -> one-time actual recipe consumption preparation
+  -> projected final+surplus output-capacity validation
+  -> journaled external consumption
+  -> ordered recipe repetitions and OnCraft
+  -> transaction-local intermediate flow
+  -> journaled final/surplus delivery
+  -> commit, or reverse-order rollback
+```
+
+- Added explicit lifecycle states from `Created`/`Validating` through `Committed`, `RolledBack`, and the critical `RollbackFailed` terminal state.
+- `CraftTransactionResult` reports transaction identity, status/state, mutation/commit/rollback flags, exact actual consumptions with source-local locators, produced/delivered/surplus outputs, and structured issues.
+- Final validation reuses the exact plan, expectations, selected recipes, and subgraph. It never reallocates or re-plans. Failure before mutation is a zero-change terminal result.
+- `ICraftResourceTransactionAdapter` resolves, validates, consumes, and journals one source; `ICraftResourceTransactionAdapterRegistry` keeps the core multi-source. Vanilla inventory is only the first adapter.
+- Vanilla SourceId remains the entire `vanilla:player-inventory:<player>` source. Prepared locators reserve deterministic slot segments and support one item split over multiple slots and multiple execution calls within one allocation.
+- Each Vanilla mutation journals full Item clones before changing slots. Output delivery journals the inventory as part of the same transaction, so partial insertion and source changes roll back together.
+- The output sink projects the exact actual slot consumption before mutation, stacks into compatible existing Items, uses empty general-inventory slots, and requires every final and surplus stack to fit.
+- Intermediate outputs remain in an execution-owned Item buffer. Only the requested final production and unconsumed intermediate surplus enter the output sink.
+- A terminal transaction instance is cached. A second call after commit returns `AlreadyCommitted` and cannot consume or deliver again; failed instances likewise do not rerun randomized consumption.
+- `/gcexecplan` remains read-only. `/gcexecute <itemId> [additionalQuantity] confirm` is the explicit live command and rejects every multiplayer context as `UnsupportedMultiplayerContext`.
+
+### Automated Validation
+
+- M5.2 T1-T22: `22/22 PASS`, covering direct success, split slots, generic multi-source, EvidenceOnly rejection, local intermediate, surplus, external+local, shared-resource accounting, concrete Recipe Group consumption, three final-validation changes, full output sink, four principal rollback points, double execute, deterministic actual quantity, no duplication, exact no-loss restoration, and Planner immutability.
+- Fault matrix additionally exercises `AfterSourceConsumption`, later `BeforeCraftStep`, `BeforeOutputDelivery`, `DuringOutputDelivery`, and `AfterOutputDeliveryBeforeCommit`. Every normal synthetic rollback completed; `RollbackFailed` was never observed.
+- Actual Terraria preparation coverage: `5/5 PASS`: Copper Watch Recipe #2061; Glass -> Bottle Recipe #155; Bottle -> Lesser Healing Potion Recipe #161; Lesser -> Healing Potion Recipe #163; Iron Pickaxe Recipe #2079. These tests resolve real `Main.recipe` identity, execute official consumption-quantity preparation, and create exact Terraria output Items without touching a Player inventory during dedicated load.
+- Full regression: Resource Source `7/7`; M4.1 `14/14`; M4.2 `22/22`; M4.3 `25/25`; M4.4 `20/20`; M4 Final `24/24`; actual recipe integration `8/8`; M5.1 `16/16`; M5.2 `22/22`; M5.2 actual semantics `5/5`.
+- `dotnet build GraphCraft.csproj`: SUCCESS, 0 warnings / 0 errors.
+- tModLoader `1.4.4.9+2026.06.3.6` dedicated load: SUCCESS, `Mod Load Completed in 1107ms`; stopped at world selection without entering a world. The log's expected `Silently Caught Exception` warnings are the intentionally injected failure paths whose results then passed exact rollback assertions.
+
+### Manual Live Validation
+
+The command below really mutates inventory. Test in single-player with `/gcexecplan` first, then use the exact `confirm` suffix.
+
+1. Copper Watch (ItemID 15): hold Copper Bar x10 and Chain x1; stand by Table + Chair; run `/gcexecplan 15 1`, then `/gcexecute 15 1 confirm`. Expect both materials reduced, one Copper Watch inserted, `TransactionStatus=Success`, `committed=True`, no surplus.
+2. Healing Potion (ItemID 188): start with the previously validated base resources and the required Furnace/placed Bottle stations, but no Bottle or Lesser Healing Potion; run `/gcexecplan 188 1`, then `/gcexecute 188 1 confirm`. Expect Glass -> Bottle x2 -> Lesser Healing Potion x2 -> Healing Potion x1, with every legitimate leftover Bottle/Lesser stack delivered as surplus. At an Alchemy Table, compare the recorded actual consumption against normal Terraria probabilistic savings; the saved resources must remain in their original slots.
+3. Iron Pickaxe (ItemID 1): hold Iron Bar x10 plus a concrete mixed Any Wood allocation such as Wood x1 and Boreal Wood x2; stand by an Anvil; run `/gcexecplan 1 1`, then `/gcexecute 1 1 confirm`. Expect exactly those concrete wood types and bars consumed, one pickaxe inserted, and no group re-selection.
+4. Rollback: dangerous live fault injection is not exposed by the Release-facing command. Use the load-time deterministic T14-T17/T20-T21 matrix as the rollback evidence.
+
+### Deferred Boundaries
+
+- Multiplayer inventory authority/synchronization is not implemented; the live command performs zero mutation outside single-player.
+- Third-party storage adapters remain M7. Mod recipes/items and arbitrary Global/recipe hooks that cause non-inventory side effects are not claimed transactional.
+- Vanilla inventory and output Item state are rollback-safe via clones, but arbitrary hook-created world/network effects cannot be generically undone. Such compatibility requires an explicit future adapter/contract.
+- No M6 UI and no M7 integration were added. M5.2 remains awaiting real in-game manual validation before any `M5 COMPLETE` claim.

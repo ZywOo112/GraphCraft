@@ -24,7 +24,9 @@ public sealed class VanillaPlayerInventoryResourceSource : ICraftResourceSource
 	public CraftResourceSourceSnapshot Capture()
 	{
 		var counts = new Dictionary<int, int>();
-		foreach (Item item in _player.inventory) {
+		int recipeInventorySlots = Math.Min(58, _player.inventory.Length);
+		for (int slot = 0; slot < recipeInventorySlots; slot++) {
+			Item item = _player.inventory[slot];
 			if (item is null || item.IsAir || item.stack <= 0)
 				continue;
 			counts[item.type] = checked(counts.GetValueOrDefault(item.type) + item.stack);

@@ -9,6 +9,29 @@ namespace GraphCraft.Debug;
 
 internal static class CraftResolutionDiagnostics
 {
+	public static string FormatTransactionalExecutionValidation(TransactionalExecutionSyntheticReport report) => $"""
+		[GraphCraft] Milestone 5.2 transactional execution validation
+		  T1-T3 direct, split-slot, and generic multi-source execution: PASS
+		  T4 EvidenceOnly rejection: PASS
+		  T5 transaction-local intermediate: PASS
+		  T6 intermediate surplus delivery: PASS (surplus={report.SurplusExample.SurplusOutputs.Sum(item => item.Quantity)})
+		  T7 external plus local intermediate: PASS
+		  T8 shared-resource no double consume: PASS
+		  T9 concrete Recipe Group consumption: PASS
+		  T10-T12 final source/environment/condition validation: PASS
+		  T13 pre-mutation output capacity rejection: PASS
+		  T14-T17 deterministic partial-consumption/step/output rollback: PASS
+		  T18 transaction-instance double execute protection: PASS
+		  T19 deterministic actual-consumption recording: PASS
+		  T20 no-duplication fault matrix: PASS ({report.FaultRollbackCaseCount} points)
+		  T21 exact no-loss rollback: PASS
+		  T22 immutable Planner artifact: PASS
+		  Success example: id={report.SuccessExample.TransactionId}, status={report.SuccessExample.Status}, committed={report.SuccessExample.Committed}
+		  Rollback example: id={report.RollbackExample.TransactionId}, status={report.RollbackExample.Status}, rollback={report.RollbackExample.RollbackSucceeded}
+		  PassedRequiredTests: {report.PassedTestCount}/22
+		  TransactionalExecutionValidationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}
+	""";
+
 	public static string FormatExecutionDryRunValidation(ExecutionDryRunSyntheticReport report) => $"""
 		[GraphCraft] Milestone 5.1 execution planning and fresh preflight validation
 		  E1/E2 one source sufficient/insufficient: PASS
@@ -28,6 +51,45 @@ internal static class CraftResolutionDiagnostics
 		  PassedRequiredTests: {report.PassedTestCount}/16
 		  ExecutionPreflightValidationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}
 	""";
+
+	public static string FormatCraftTransactionAudit(
+		TargetCraftPlanResult logicalPlan,
+		CraftExecutionPreflightResult? preflight,
+		CraftTransactionResult? transaction,
+		Func<int, string> itemName)
+	{
+		var builder = new StringBuilder();
+		builder.AppendLine($"[GraphCraft] M5.2 LIVE transaction: {itemName(logicalPlan.Target.ItemType)} ({logicalPlan.Target.ItemType}) additional x{logicalPlan.RequestedAdditionalOutputQuantity}");
+		builder.AppendLine($"  PlannerStatus={logicalPlan.Status}; PreflightStatus={preflight?.Status.ToString() ?? "NotRun"}; TransactionStatus={transaction?.Status.ToString() ?? "NotRun"}");
+		if (transaction is null)
+			return builder.ToString();
+		builder.AppendLine($"  TransactionId={transaction.TransactionId}; State={transaction.State}; mutation={transaction.MutationOccurred}; committed={transaction.Committed}; rollbackAttempted={transaction.RollbackAttempted}; rollbackSucceeded={transaction.RollbackSucceeded}");
+		foreach (ActualResourceConsumption consumed in transaction.ActualConsumptions)
+			builder.AppendLine($"  Consumed: step={consumed.StepSequence}, ingredient={consumed.IngredientOrdinal}, SourceId={consumed.SourceId}, locator={consumed.SourceLocalLocator}, {itemName(consumed.ItemType)} ({consumed.ItemType}) x{consumed.Quantity}");
+		foreach (CraftTransactionItemStack output in transaction.ProducedOutputs)
+			builder.AppendLine($"  Produced: step={output.OriginStepSequence}, repetition={output.CraftRepetition}, {itemName(output.ItemType)} ({output.ItemType}) x{output.Quantity}");
+		foreach (CraftTransactionItemStack output in transaction.DeliveredOutputs)
+			builder.AppendLine($"  Delivered: {output.Kind}, {itemName(output.ItemType)} ({output.ItemType}) x{output.Quantity}");
+		foreach (CraftTransactionItemStack output in transaction.SurplusOutputs)
+			builder.AppendLine($"  Surplus: {itemName(output.ItemType)} ({output.ItemType}) x{output.Quantity}");
+		foreach (CraftTransactionIssue issue in transaction.Issues)
+			builder.AppendLine($"  Issue: {issue.Status}: {issue.Message}");
+		return builder.ToString();
+	}
+
+	public static string FormatTransactionalRealRecipeIntegration(
+		TransactionalRealRecipeIntegrationReport report,
+		Func<int, string> itemName)
+	{
+		var builder = new StringBuilder();
+		builder.AppendLine("[GraphCraft] Milestone 5.2 actual Terraria recipe-semantics preparation validation");
+		foreach (TransactionalRealRecipeCase test in report.Cases)
+			builder.AppendLine($"  {test.Name}: PASS Recipe #{test.RecipeIndex} -> {itemName(test.ResultItemType)} ({test.ResultItemType}); actualIngredients={test.ActualIngredientQuantity}/{test.MaximumIngredientQuantity}; output={test.OutputQuantity}");
+		builder.AppendLine($"  PassedActualTransactionRecipeCases: {report.PassedCaseCount}/{report.Cases.Count}");
+		builder.AppendLine("  Boundary: dedicated load prepares official consumption/output semantics without mutating a Player; live OnCraft/inventory delivery remains manual-validation only.");
+		builder.AppendLine($"  TransactionRecipeIntegrationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}");
+		return builder.ToString();
+	}
 
 	public static string FormatExecutionPreflightAudit(
 		TargetCraftPlanResult logicalPlan,

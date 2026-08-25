@@ -106,10 +106,25 @@
 
 ## 当前状态
 
-- 已完成：Milestone 0、Milestone 1、Milestone 2、Milestone 3、Milestone 3.5、Milestone 4.1，以及 Milestone 4.2（Recursive Single-Path Dependency Planning）。
-- 已验证：单/多来源 aggregation、per-source provenance、跨来源 ingredient、multi-source Recipe Group、source isolation、Milestone 3 全回归和真实 tModLoader 加载。
-- 真实 Player capture 通过 `/gcstate <itemId>` 提供；自动化环境不能进入玩家世界，因此仍需游戏内手动验证。
-- 未开始：Alternative Recipe OR、Recipe Group concrete allocation、global alternative-branch competition、backtracking、cycle solving、material consumption、executor 或正式 UI。
+- 已完成：Milestone 0-4 Final、Milestone 5.1，以及 Milestone 5.2 自动实现与加载期验证。
+- 已验证：resource sources、完整 M4 planning/backtracking/group allocation、M5.1 dry-run/preflight、M5.2 transaction/rollback synthetic matrix、真实 Terraria recipe-semantics preparation 和 dedicated load。
+- 真实 Player capture/dry-run 通过 `/gcstate`、`/gcexecplan` 提供；真实 mutation 通过 single-player-only `/gcexecute ... confirm` 提供。M5.2 尚待真人游戏验证，不能宣布 `M5 COMPLETE`。
+- 未开始：Milestone 6 正式 UI、Milestone 7 third-party storage/compatibility，以及不在当前事务边界内的 multiplayer authority 和 arbitrary third-party hook rollback。
+
+## Milestone 5.2 Transaction Constraints (Authoritative)
+
+- `CraftExecutionTransaction` only consumes an existing immutable `ExecutableTransactionPlan`; execution never searches recipes, re-solves Recipe Groups, changes explicit choices, or re-enters Planner.
+- A fresh `ResolutionSnapshot` is captured and checked immediately before the synchronous mutation boundary. Source, capability, planned maximum quantity, station, condition, recipe identity, exact source-local locators, and output capacity must pass before any inventory mutation.
+- `CraftResourceSourceId` identifies the whole source. Slot/index identity is adapter-owned `CraftSourceSlotLocator` state and must not leak into Planner or replace SourceId semantics.
+- Execution Core depends only on generic transaction adapters, recipe-semantics services, output sinks, and mutation-journal contracts. Direct `player.inventory`, `Main.recipe`, and tModLoader hook access belongs in `Systems/Execution` implementations.
+- Vanilla recipe ingredient visibility/consumption is limited to inventory slots 0-57, matching Terraria recipe consumption. Generic output delivery uses the normal inventory area 0-49.
+- Every real inventory mutation must first journal complete `Item.Clone()` snapshots. Rollback restores cloned Items in reverse journal order; type/stack-only restoration is insufficient.
+- Actual ingredient quantities are obtained once per recipe repetition from `RecipeLoader.ConsumeIngredient`, may be lower than the planned maximum, and may never exceed it. Recorded results are not re-randomized by retrying a terminal transaction instance.
+- Each recipe repetition invokes `RecipeLoader.OnCraft` with the actual concrete consumed Item snapshots. M5.2 accepts vanilla recipes/items only; output identity/quantity-changing hooks and generally reversible third-party external side effects remain unsupported compatibility boundaries.
+- Transaction-local intermediates never enter normal inventory. Unconsumed intermediate surplus is a legitimate player output and must be delivered through the output sink with the final output.
+- Output capacity is checked before ingredient mutation against projected exact consumption. Output insertion is journaled and participates in the same rollback as source consumption.
+- A committed or otherwise terminal transaction instance cannot execute again. Multiplayer live execution is rejected; `/gcexecute <itemId> [quantity] confirm` is single-player only and visibly mutates inventory. `/gcexecplan` remains read-only.
+- M5.2 does not add M6 UI or M7 third-party storage adapters.
 
 ## Milestone 3 约束
 
