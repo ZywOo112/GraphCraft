@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Text;
+using GraphCraft.Core.Execution;
 using GraphCraft.Core.Planning;
 using GraphCraft.Core.Resolution;
 
@@ -8,6 +9,61 @@ namespace GraphCraft.Debug;
 
 internal static class CraftResolutionDiagnostics
 {
+	public static string FormatExecutionDryRunValidation(ExecutionDryRunSyntheticReport report) => $"""
+		[GraphCraft] Milestone 5.1 execution planning and fresh preflight validation
+		  E1/E2 one source sufficient/insufficient: PASS
+		  E3 deterministic split A3+B4+C3: PASS ({string.Join(", ", report.SplitAllocationExample.AllocationPreview.Select(allocation => $"{allocation.SourceId}=x{allocation.Quantity}"))})
+		  E4/E5 EvidenceOnly and mixed-capability boundary: PASS
+		  E6 shared-source double-count prevention: PASS
+		  E7 transaction-local intermediate: PASS (externalItems={string.Join(',', report.IntermediateExample.AllocationPreview.Select(allocation => allocation.ItemType).Distinct())})
+		  E8 intermediate surplus reuse: PASS
+		  E9 external plus local intermediate: PASS
+		  E10 concrete Recipe Group preservation: PASS
+		  E11/E12 resource change and source disappearance: PASS (stale={report.StaleResourceExample.Status})
+		  E13 environment change: PASS ({report.EnvironmentChangeExample.Status})
+		  E14 recipe condition change: PASS
+		  E15 deterministic replay: PASS
+		  E16 success/failure no mutation: PASS
+		  Runtime mutation: disabled
+		  PassedRequiredTests: {report.PassedTestCount}/16
+		  ExecutionPreflightValidationElapsedMs: {report.Elapsed.TotalMilliseconds:F3}
+	""";
+
+	public static string FormatExecutionPreflightAudit(
+		TargetCraftPlanResult logicalPlan,
+		CraftExecutionPreflightResult? preflight,
+		bool inventoryUnchanged,
+		Func<int, string> itemName)
+	{
+		var builder = new StringBuilder();
+		builder.AppendLine($"[GraphCraft] M5.1 execution preflight: {itemName(logicalPlan.Target.ItemType)} ({logicalPlan.Target.ItemType}) additional x{logicalPlan.RequestedAdditionalOutputQuantity}");
+		builder.AppendLine($"  PlannerStatus: {logicalPlan.Status}; selectedRoot={(logicalPlan.SelectedRootRecipe is null ? "none" : $"Recipe #{logicalPlan.SelectedRootRecipe.RecipeIndex}")}; steps={logicalPlan.Steps.Count}");
+		builder.AppendLine($"  ExecutionStatus: {preflight?.Status.ToString() ?? "NotRun"}; executableTransaction={(preflight?.TransactionPlan is null ? "no" : "yes")}; inventoryUnchanged={inventoryUnchanged}");
+		if (preflight is null) {
+			builder.AppendLine("  Execution preflight requires one successful, fully resolved logical plan.");
+			return builder.ToString();
+		}
+
+		foreach (ExecutionStepPlan step in preflight.StepPreview) {
+			builder.AppendLine($"  Step {step.Sequence}: Recipe #{step.Recipe.RecipeIndex} x{step.CraftRepetitions} -> {itemName(step.Production.ItemType)} x{step.Production.Quantity} ({step.Production.Kind})");
+			foreach (ExecutionResourceDemand demand in step.Demands)
+				builder.AppendLine($"    Demand {itemName(demand.ItemType)} ({demand.ItemType}) x{demand.RequiredQuantity}: local={demand.TransactionLocalQuantity}, live={demand.ExternalSourceQuantity}, groupConcrete={demand.IsRecipeGroupAllocation}");
+		}
+		foreach (SourceResourceAllocation allocation in preflight.AllocationPreview) {
+			builder.AppendLine($"  LiveAllocation: step={allocation.StepSequence}, ingredient={allocation.IngredientOrdinal}, SourceId={allocation.SourceId}, item={itemName(allocation.ItemType)} ({allocation.ItemType}), quantity={allocation.Quantity}, capability={allocation.ConsumptionCapability}");
+		}
+		foreach (RecipePreflightEvidence evidence in preflight.RecipeEvidence) {
+			string conditions = evidence.Conditions.Count == 0
+				? "none"
+				: string.Join(", ", evidence.Conditions.Select(condition => $"{condition.Key}={condition.State}"));
+			builder.AppendLine($"  Constraints: step={evidence.StepSequence}, recipe=#{evidence.RecipeIndex}, environment={evidence.StationState}, conditions=[{conditions}]");
+		}
+		foreach (ExecutionPreflightIssue issue in preflight.Issues)
+			builder.AppendLine($"  Issue: {issue.Kind}: {issue.Message}");
+		builder.AppendLine("  Boundary: dry run only; no inventory removal, craft call, output spawn, commit, or rollback.");
+		return builder.ToString();
+	}
+
 	public static string FormatTargetPlanAudit(TargetCraftPlanResult result, Func<int, string> itemName)
 	{
 		var builder = new StringBuilder();

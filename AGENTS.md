@@ -213,4 +213,18 @@
 
 ## 下一里程碑
 
-Milestone 4.3 已建立 isolated alternative evaluation、structured user-choice boundary、nested decision provenance 与 explicit-choice deterministic re-plan。下一步仅建议 Resource Alternatives + Recipe Group Allocation + General Backtracking；不要自行开始 execution 或 UI。
+Milestone 5.1 已完成 execution planning、SourceId allocation、transaction-local intermediate replay、fresh resource/environment/condition preflight 与真实 Vanilla inventory dry-run command。下一步是 M5.2 transaction lifecycle；在明确 prepare/reserve/commit/rollback、intermediate ownership、Terraria craft hooks 和 multiplayer authority 前，不得开始真实 mutation。
+
+## Milestone 5.1 Constraints (Authoritative)
+
+- `Core/Execution` 是独立于 Planner 的执行域。Planner contracts、搜索和 immutable Ledger 不读取 live source，也不承担 SourceId allocation。
+- 只有成功且已解决的 `TargetCraftPlanResult` 可以进入 `CraftExecutionPlanner.CreatePreflight`；失败、deferred 或 user-choice plan 不可执行。
+- Execution step plan 按 dependency-ordered logical steps 建立，逐项区分 external source resources 与先前步骤产生的 transaction-local intermediates；local intermediate 永远不能分配到 SourceId。
+- Recipe Group 必须原样使用 Planner 已选择的 concrete ItemType allocation；Executor 不重新选择 iconic item、accepted member 或 recipe route。
+- Source allocation 按 step、ingredient、ItemType、ordinal `SourceId` 顺序确定性执行，可跨多个 source 拆分，绝不超过原始 per-source evidence count，并保留 step/ingredient/source provenance。
+- `EvidenceOnly` 对 planning 可见但永远不能进入 executable allocation。`AdapterTransactionRequired` 可进入 M5.1 dry-run allocation；真正 adapter lifecycle 由 M5.2 定义。
+- Allocation failure 是原子的：不得发布 partial allocation 或 source expectations，且任何 dry-run path 都不得修改、reserve 或 consume live sources。
+- Fresh revalidation 接受同一 `TargetCraftSubgraph` 的全新 `ResolutionSnapshot`：比较已分配 SourceId 的 SourceKind/capability/ItemType quantity，并复验每个既定 recipe 的 station 与 Condition 状态；不得重新规划或切换路线。
+- M5.1 使用 fresh capture + quantity comparison 的 optimistic revalidation；尚无 source revision token、lock、reservation、cross-source atomic commit 或 race-free guarantee。
+- Vanilla inventory 仍只通过 `VanillaPlayerInventoryResourceSource` 参与 capture；`Core/Execution` 不得读取 `Player` 或 `player.inventory`。
+- M5.1 不 remove inventory item、不调用 Terraria craft、不 spawn output、不 commit、不 rollback，也不进入 world；preflight/result 的 mutation 标记恒为 false。

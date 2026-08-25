@@ -74,6 +74,9 @@ public sealed class CraftGraphSystem : ModSystem
 		PlannerFinalizationSyntheticReport finalizationReport = PlannerFinalizationSyntheticTests.Run();
 		Mod.Logger.Info(CraftResolutionDiagnostics.FormatPlannerFinalizationValidation(finalizationReport));
 
+		ExecutionDryRunSyntheticReport executionReport = ExecutionDryRunSyntheticTests.Run();
+		Mod.Logger.Info(CraftResolutionDiagnostics.FormatExecutionDryRunValidation(executionReport));
+
 		RealRecipeIntegrationReport realRecipeReport = RealRecipeIntegrationTests.Run(Current, CurrentAnalysis);
 		Mod.Logger.Info(CraftResolutionDiagnostics.FormatRealRecipeIntegration(realRecipeReport, Lang.GetItemNameValue));
 	}

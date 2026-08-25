@@ -788,3 +788,51 @@ The Finalization audit and validation record above is authoritative over the his
 - `dotnet build GraphCraft.csproj --nologo`：SUCCESS，0 warnings / 0 errors。
 - tModLoader `1.4.4.9+2026.06.3.6` server load-session：SUCCESS；all previous validations plus 22/22 recursive tests passed。
 - Validation server process was stopped after the complete report；no world was entered and no real resource was consumed。
+
+## 2026-08-25 - Milestone 5.1: Execution Planning and Fresh Preflight
+
+### Scope and Boundary
+
+- 新增独立 `Core/Execution` domain；Planner Core 未加入 live source、Terraria `Player` 或 mutation dependency。
+- `CraftExecutionPlanner.CreatePreflight` 只接受成功且已解决的 `TargetCraftPlanResult` 与同一 target subgraph 的 fresh `ResolutionSnapshot`，输出 immutable step preview、SourceId allocations、source expectations、recipe constraint evidence、structured issues，以及仅成功时存在的 `ExecutableTransactionPlan`。
+- 本阶段没有 remove item、Terraria craft invocation、output spawn、reserve、commit、rollback 或任何 runtime mutation。
+
+### Demand Schedule
+
+- 按 `PlannedCraftStep.Sequence` 重放 dependency-ordered logical steps。
+- 每个 concrete ingredient demand 明确拆分为 `TransactionLocalQuantity` 与 `ExternalSourceQuantity`。
+- 先前 logical step 的 production 进入 execution-owned local buffer；transaction-local intermediate 不进入 SourceId allocator，surplus 可被后续 sibling demand 重用。
+- Recipe Group 直接保留 Planner 的 concrete ItemType/quantity allocation；final root output 与 intermediate production 使用不同 production kind。
+
+### Source Allocation and Capability Validation
+
+- 从原始 `CraftResourceAggregateSnapshot.GetEvidence(itemType)` 按 ordinal `SourceId` 顺序确定性分配。
+- 支持同一 ItemType 跨多个 source 拆分，并按 source/item 维护剩余 evidence count，防止超量或重复分配。
+- `EvidenceOnly` 只可作为 planning evidence；若 executable demand 必须依赖它，返回 `UnsupportedSourceCapability`，不发布 partial allocation。
+- `AdapterTransactionRequired` 是 M5.1 可分配来源；具体 transaction adapter lifecycle 不在本阶段伪造，留给 M5.2。
+
+### Fresh Snapshot Revalidation
+
+- 调用方通过现有 resource/environment adapters 重新 capture `PlayerCraftContextSnapshot` 并建立 fresh `ResolutionSnapshot`；Core execution 只消费 immutable snapshots。
+- 比较 SourceId/SourceKind、consumption capability、每个已分配 ItemType 的 current count 与 planned quantity，并逐步复验既定 recipe 的 station 和每个 Condition。
+- source disappearance、kind/capability change、quantity decrease、environment change、condition false/unknown 均有独立 structured issue。
+- 未分配 source 或同一 source 中未分配 ItemType 的变化不会使 plan stale。
+- 当前策略为 optimistic fresh capture + count comparison；revision token、locking/reservation、transaction lifecycle 和 cross-source atomicity 留给 M5.2。
+
+### Synthetic Validation
+
+- 新增文档指定的 16 个 load-time M5.1 scenarios：one source sufficient/insufficient、A3+B4+C3 split、EvidenceOnly、mixed capability、shared-source no-double-count、local intermediate、surplus reuse、external+intermediate、concrete Recipe Group、resource changed、source disappeared、environment changed、condition changed、determinism、success/failure no mutation。
+- 所有 failure path 不生成 `ExecutableTransactionPlan`；allocation failure 不公开 partial allocation/expectation。
+
+### Real Vanilla Debug Path
+
+- 新增 `/gcexecplan <itemId> [additionalQuantity]`，使用真实 `VanillaPlayerInventoryResourceSource` 与 `VanillaPlayerEnvironmentSource` 完成 planning capture、fresh preflight capture 和只读验证。
+- 输出 Planner/Execution status、step、local/live demand、SourceId/item/quantity、station/condition result 与 inventory unchanged evidence。
+- `Core/Execution` 不依赖 Terraria，也不直接访问 `player.inventory`。
+
+### Build and Load Validation
+
+- `dotnet build GraphCraft.csproj --no-restore`：SUCCESS，0 warnings / 0 errors。
+- tModLoader `1.4.4.9+2026.06.3.6` dedicated load-session：SUCCESS；M5.1 `16/16` PASS。
+- resource-source regression `7/7`、M4.1 `14/14`、M4.2 `22/22`、M4.3 `25/25`、M4.4 `20/20`、M4 finalization `24/24` 和 actual Terraria recipes `8/8` 全部继续 PASS。
+- `Mod Load Completed in 1111ms`；进程随后在 world selection 停止，没有进入世界或修改真实玩家/resource state。
