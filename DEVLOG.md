@@ -899,3 +899,27 @@ On 2026-11-19, the user confirmed that the Copper Watch, Healing Potion, and Iro
 - Third-party storage adapters remain M7. Mod recipes/items and arbitrary Global/recipe hooks that cause non-inventory side effects are not claimed transactional.
 - Vanilla inventory and output Item state are rollback-safe via clones, but arbitrary hook-created world/network effects cannot be generically undone. Such compatibility requires an explicit future adapter/contract.
 - Production UI work is deferred to M6.
+
+## 2026-11-19 - Milestone 6.1: Visual Craft Graph UI Core
+
+- Press the configurable `G` key in a world to open or close the graph. Hover a vanilla inventory slot before opening to use that item as the target. The in-window picker searches localized item names and item IDs. `/gcgraph <itemId> [additionalQuantity]` opens a specific target.
+- The prerequisite canvas retains canonical ItemNode and RecipeNode identity. The target, focus, and selection are independent. Click a node for details, expand or collapse prerequisites, and use Focus Selection, Back, or Target to navigate. Drag empty canvas space to pan and scroll to zoom.
+- The UI extracts a bounded TargetCraftSubgraph, captures inventory, station and condition evidence through the existing adapters, and presents Resolution and TargetCraftPlanner outputs. Direct recipe readiness is shown separately from complete target feasibility. The requested amount is additional output. The UI refreshes evidence on opening, changing target or quantity, and pressing Refresh. Pan, zoom, selection, and focus reuse the captured evidence.
+- Result and ingredient links preserve their direction toward the target. Shared nodes are drawn once, SCC links close cycles, and group links represent accepted alternatives. Only concrete allocations in the current plan highlight corresponding group members. Recipe details show requirements, station and condition evidence, and the Planner's complete-route candidate status where available.
+- Extraction is capped at 10 dependency levels and 1,200 nodes. Planning uses a 2,048-branch budget. The deterministic layer layout is capped at 72 visible nodes and 160 links. The window reports extraction, search, and display limits and supports isolating a branch with focus.
+- UI code uses the tModLoader client UI and reaches existing Planner logic only through its canonical target entry point. The Planner and transaction contracts were left intact. Recipe selection and crafting are M6.2 scope. Usage View and third-party integrations remain deferred.
+
+### Validation
+
+- `dotnet build GraphCraft.csproj` packaged successfully with 0 warnings and 0 errors. Dedicated tModLoader `1.4.4.9+2026.09.3.1` loaded the isolated mod set and reached world selection.
+- M6.1 automated validation passed 18/18. It covered projection, shared identity, expansion/collapse, deterministic layout, focus navigation, complete-route alternatives, refresh, constraints, cycles, and bounds. Five fixtures used real Terraria recipes with synthetic context evidence. Those fixtures run with only GraphCraft enabled so modifications from other mods cannot change the baseline.
+- Regressions passed for resource sources 7/7, M4.1 14/14, M4.2 22/22, M4.3 25/25, M4.4 20/20, M4 finalization 24/24, real recipe integration 8/8, M5.1 16/16, M5.2 22/22, and real recipe transaction semantics 5/5.
+- Client drawing, keybinds, hover coverage, pan, and zoom remain pending in-game validation.
+
+### In-Game Acceptance
+
+1. **Copper Watch** — hold ten Copper Bars and one Chain. Open `/gcgraph 15`. At a Table and Chair, refresh and verify a direct recipe, the correct ingredient counts, and a complete target route. Walk away and refresh to verify station evidence changes. Try opening from an inventory hover with `G`.
+2. **Healing Potion** — keep Glass, Mushroom, Gel, and Glowing Mushroom, with no Bottle or Lesser Healing Potion. Near the necessary Furnace and brewing station, open `/gcgraph 188` and expand the chain. Verify the root recipe can need ingredients locally while the complete target route is craftable.
+3. **Iron Pickaxe** — at an Anvil, hold ten Iron Bars, one Wood, and two Boreal Wood. Open `/gcgraph 1`. The recipe shows the Any Wood rule and the plan's concrete Wood and Boreal Wood counts.
+4. **Battle Potion** — select it by name and inspect both producers. Bring the materials for both recipes to the brewing station and refresh. Verify complete viable alternatives are reported as requiring a choice.
+5. **Cell Phone** — select it by name, expand to Goblin Tech, select and focus it, and verify the target still reads Cell Phone. Test Back, Target, pan, zoom, and closing/reopening. Confirm the inventory is unchanged throughout the checks.

@@ -5,6 +5,7 @@ using System.Linq;
 using GraphCraft.Core.Context;
 using GraphCraft.Core.Graph;
 using GraphCraft.Core.Resources;
+using GraphCraft.Core.Subgraphs;
 using GraphCraft.Systems.Adapters;
 using Terraria;
 
@@ -23,6 +24,18 @@ public static class PlayerCraftContextCapture
 		if (!graph.IsSealed)
 			throw new InvalidOperationException("Player crafting context capture requires a sealed CraftGraph.");
 
+		return Capture(player, graph.RecipesByIndex.Values, additionalResourceSources, additionalEnvironmentSources);
+	}
+
+	internal static PlayerCraftContextSnapshot CaptureForSubgraph(Player player, TargetCraftSubgraph subgraph) =>
+		Capture(player, subgraph.RecipeNodes, null, null);
+
+	private static PlayerCraftContextSnapshot Capture(
+		Player player,
+		IEnumerable<RecipeNode> recipes,
+		IEnumerable<ICraftResourceSource>? additionalResourceSources,
+		IEnumerable<ICraftEnvironmentSource>? additionalEnvironmentSources)
+	{
 		long captureStartTimestamp = Stopwatch.GetTimestamp();
 		var resourceSources = new List<ICraftResourceSource> { new VanillaPlayerInventoryResourceSource(player) };
 		if (additionalResourceSources is not null)
@@ -41,7 +54,7 @@ public static class PlayerCraftContextCapture
 			environmentSources.Select(source => source.Capture()));
 
 		var conditionEvidence = new List<CapturedConditionEvidence>();
-		foreach (RecipeNode recipe in graph.RecipesByIndex.Values.OrderBy(recipe => recipe.RecipeIndex)) {
+		foreach (RecipeNode recipe in recipes.OrderBy(recipe => recipe.RecipeIndex)) {
 			foreach (RecipeConditionInfo condition in recipe.Constraints.Conditions) {
 				var key = new RecipeConditionKey(recipe.RecipeIndex, condition.ConditionIndex);
 				conditionEvidence.Add(EvaluateCondition(key, condition));

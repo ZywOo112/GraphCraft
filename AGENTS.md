@@ -10,11 +10,11 @@
 ## 已确认环境
 
 - Windows x64
-- tModLoader：`1.4.4.9+2026.06.3.6`，`2026.06 stable`
+- tModLoader：`1.4.4.9+2026.09.3.1`，`2026.09 stable`
 - Terraria API：`1.4.4.9`
 - tModLoader：`E:\Steam\steamapps\common\tModLoader`
 - .NET SDK：`8.0.424`
-- Target：`net8.0`、C# 12、`TML_2026_06`
+- Target：`net8.0`、C# 12、`TML_2026_09`
 - 构建：在 PATH 包含 `C:\Program Files\dotnet` 的环境运行 `dotnet build GraphCraft.csproj`
 
 ## Architecture Invariants
@@ -109,7 +109,8 @@
 - 已完成：Milestone 0-4 Final、Milestone 5（`M5 COMPLETE`）。
 - 已验证：resource sources、完整 M4 planning/backtracking/group allocation、M5.1 dry-run/preflight、M5.2 transaction/rollback synthetic matrix、真实 Terraria recipe-semantics preparation 和 dedicated load。
 - 真实 Player capture/dry-run 通过 `/gcstate`、`/gcexecplan` 提供；真实 mutation 通过 single-player-only `/gcexecute ... confirm` 提供。M5.2 已由用户确认通过单人游戏验证。
-- 未开始：Milestone 6 正式 UI、Milestone 7 third-party storage/compatibility，以及不在当前事务边界内的 multiplayer authority 和 arbitrary third-party hook rollback。
+- M6.1 合成图 UI 已实现并通过自动验证，待单人客户端实机验收。UI 通过现有 Snapshot、Resolution 和 Planner 获取只读数据。
+- 未开始：M6.2 配方选择和制造界面、Milestone 7 third-party storage/compatibility，以及 multiplayer authority 和 arbitrary third-party hook rollback。
 
 ## Milestone 5.2 Transaction Constraints (Authoritative)
 
@@ -228,7 +229,7 @@
 
 ## 下一里程碑
 
-下一里程碑为 Milestone 6 正式 UI。
+完成 M6.1 客户端验收后进入 M6.2 配方选择与制造。
 
 ## Milestone 5.1 Constraints (Authoritative)
 

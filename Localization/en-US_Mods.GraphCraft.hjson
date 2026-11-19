@@ -1,1 +1,131 @@
+"Keybinds.Craft Graph.DisplayName": Toggle Craft Graph
 
+GraphUI: {
+	Title: Craft Graph
+	Heading: Target: {0}   ·   Focus: {1}
+	SelectTarget: Choose Item
+	SearchHint: Search by item name or ID
+	SearchResult: "{0}  ·  #{1}"
+	NarrowSearch: More matches. Refine your search.
+	NoResults: No matching items in the craft graph.
+	InvalidTarget: Select an item in the craft graph and an additional quantity from 1 to {0}.
+	CommandDescription: Open the craft graph for a specific item ID.
+	Back: Back
+	Root: Target
+	Focus: Focus Selection
+	Refresh: Refresh
+	Recenter: Reset View
+	Less: −
+	More: +
+	Additional: Make +{0}
+	RouteSummary: Target plan: {0}
+	RouteTruncated: Target plan: {0}  ·  Extraction skipped {1} recipe entries
+	CanvasHelp: Click a node for details  ·  + / − expand or collapse  ·  Drag empty space to pan  ·  Scroll to zoom
+	ViewLimit: Showing up to {0} nodes and {1} connections. Focus a branch or collapse other branches.
+	EmptyCanvas: Choose a target to see how it is crafted.
+	EdgeOr: OR
+	StockShort: Owned: {0}
+	RecipeCard: Recipe #{0} · ×{1}
+	RecipeName: Recipe #{0}
+	CycleShort: Cycle
+	Shared: Shared
+	Cycle: This node belongs to a dependency cycle. Follow other branches or use existing stock.
+	SharedEvidence: Multiple recipes in this graph reference this item. They draw from the same stock.
+	ItemCount: Item ID {0}  ·  Owned: {1}
+	Requested: Additional output requested: {0}
+	Frontier: Planning boundary at {0}: {1}
+	PendingChoice: Recipe choice for {0}: {1} complete candidates.
+	PlannerBudget: Search reached its limit. Some routes may still be unevaluated.
+	Producers: Producer recipes ({0} in scope / {1} total)
+	RecipeAndRoute: "{0}  ·  {1}  ·  Route: {2}"
+	RecipeAndLocal: "{0}  ·  {1}"
+	MoreEntries: "{0} more entries in this graph."
+	Requirements: Ingredient requirements
+	UsedBy: Recipe #{0} uses {1}
+	Makes: Produces {0} ×{1} per craft
+	LocalStatus: Direct recipe: {0}
+	RootCandidate: Complete route from target: {0}
+	CandidateEvidence: Planner result: {0}
+	DependencyCandidate: Dependency candidate: {0}
+	Planned: In the target plan: {0} craft(s)
+	None: None
+	LogicalGroup: Recipe Group: {0}
+	GroupAllocation: Planned allocation: {0}
+	Stack: "{0} ×{1}"
+	LocalAmounts: Per craft: need {0} · stock {1} · short {2}
+	LedgerAmounts: Planner ledger: need {0} · available {1} · short {2}
+	Stations: Crafting stations
+	Conditions: Recipe conditions
+	Constraint: "{0}  ·  {1}"
+	Missing: Missing
+	Satisfied: Available
+	TileId: Station #{0}
+
+	Local: {
+		ReadyNow: Ready now
+		NeedsIngredients: Needs ingredients
+		BlockedByStation: Requires station
+		BlockedByCondition: Condition unmet
+		UnknownConstraint: Unknown condition
+	}
+
+	Route: {
+		Craftable: Recursively craftable
+		ChoiceRequired: Recipe choice required
+		NeedsIngredients: Missing base ingredients
+		BlockedByStation: Blocked by station
+		BlockedByCondition: Blocked by condition
+		UnknownConstraint: Unknown constraint
+		Deferred: Planning incomplete or deferred
+		NoRoute: No complete viable route
+	}
+
+	Candidate: {
+		FullyViable: Complete route available
+		RequiresUserChoice: Needs a further choice
+		Failed: Unavailable
+		Blocked: Blocked by a requirement
+		Deferred: Deferred
+		NotApplicable: Not applicable
+	}
+
+	Decision: {
+		AutoSelectedOnlyViable: Planner found one complete route.
+		UserChoiceRequired: "{0} complete routes need a recipe choice."
+		ExplicitlySelected: The requested route is viable.
+		UnresolvedDependencyChoice: A dependency recipe choice is required.
+		UnresolvedDeferred: Route evaluation is incomplete.
+		NoViableCandidate: No candidate has a complete viable route.
+		InvalidExplicitChoice: The requested recipe choice is invalid.
+		ExplicitChoiceFailed: The requested recipe could not make the target.
+	}
+
+	Condition: {
+		Satisfied: Met
+		Unsatisfied: Unmet
+		Unknown: Unknown
+	}
+
+	Plan: {
+		Success: Complete route available
+		RecipeOutsideTargetSubgraph: Recipe outside the loaded graph
+		NoProducerInTargetSubgraph: No producer within the loaded graph
+		InsufficientTerminalResource: Missing base ingredient
+		TargetSubgraphTruncated: Graph extraction limit
+		AlternativeProducerDeferred: Alternative recipe deferred
+		DeferredRecipeGroupAllocation: Group allocation deferred
+		BlockedByStation: Missing crafting station
+		BlockedByCondition: Recipe condition unmet
+		UnknownConstraint: Unknown condition
+		CycleBoundary: Dependency cycle
+		PlanningDepthBoundary: Planning depth limit
+		UserChoiceRequired: Recipe choice required
+		AlternativeResolutionDeferred: Alternative evaluation incomplete
+		NoViableAlternative: No viable alternative
+		InvalidExplicitChoice: Invalid recipe choice
+		ExplicitChoiceFailed: Selected recipe unavailable
+		NoViablePlan: No viable plan
+		NoViableResourceAllocation: No viable resource allocation
+		SearchBudgetBoundary: Planning search limit
+	}
+}

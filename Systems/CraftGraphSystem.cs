@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Linq;
 using GraphCraft.Core.Analysis;
 using GraphCraft.Core.Graph;
 using GraphCraft.Core.Subgraphs;
@@ -85,6 +86,14 @@ public sealed class CraftGraphSystem : ModSystem
 
 		TransactionalRealRecipeIntegrationReport transactionRecipeReport = TransactionalRealRecipeIntegrationTests.Run(Current);
 		Mod.Logger.Info(CraftResolutionDiagnostics.FormatTransactionalRealRecipeIntegration(transactionRecipeReport, Lang.GetItemNameValue));
+
+		bool vanillaRecipeFixtures = ModLoader.Mods.All(mod => mod == Mod || mod.Name == "ModLoader");
+		var uiCases = CraftGraphUITests.Run(Current, CurrentAnalysis, vanillaRecipeFixtures);
+		foreach (string test in uiCases)
+			Mod.Logger.Info($"[GraphCraft] M6.1 {test}: PASS");
+		Mod.Logger.Info($"[GraphCraft] M6.1 Graph UI validation: {uiCases.Count}/{uiCases.Count} PASS");
+		if (!vanillaRecipeFixtures)
+			Mod.Logger.Info("[GraphCraft] M6.1 vanilla recipe fixtures skipped with other mods enabled.");
 	}
 
 	public override void Unload()

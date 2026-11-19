@@ -1,0 +1,131 @@
+"Keybinds.Craft Graph.DisplayName": 打开或关闭合成图
+
+GraphUI: {
+	Title: 合成图
+	Heading: 目标：{0}   ·   焦点：{1}
+	SelectTarget: 选择物品
+	SearchHint: 搜索物品名称或 ID
+	SearchResult: "{0}  ·  #{1}"
+	NarrowSearch: 还有更多结果，请缩小搜索范围。
+	NoResults: 合成图中没有匹配的物品。
+	InvalidTarget: 请选择合成图中的物品，并指定 1 到 {0} 的新增数量。
+	CommandDescription: 打开指定物品 ID 的合成图。
+	Back: 返回
+	Root: 回到目标
+	Focus: 聚焦所选节点
+	Refresh: 刷新
+	Recenter: 重置视图
+	Less: −
+	More: +
+	Additional: 新增 ×{0}
+	RouteSummary: 目标规划：{0}
+	RouteTruncated: 目标规划：{0}  ·  子图提取跳过 {1} 个配方
+	CanvasHelp: 点击节点查看详情  ·  + / − 展开或折叠  ·  拖动空白处平移  ·  滚轮缩放
+	ViewLimit: 已显示 {0} 个节点和 {1} 条连接。可聚焦分支或折叠其他分支。
+	EmptyCanvas: 选择目标以查看合成方法。
+	EdgeOr: 或
+	StockShort: 持有：{0}
+	RecipeCard: 配方 #{0} · ×{1}
+	RecipeName: 配方 #{0}
+	CycleShort: 循环
+	Shared: 共享
+	Cycle: 此节点处于依赖循环中。可查看其他分支或利用已有库存。
+	SharedEvidence: 图中有多个配方引用此物品，均使用同一份库存。
+	ItemCount: 物品 ID {0}  ·  持有：{1}
+	Requested: 请求新增产量：{0}
+	Frontier: "{0} 的规划边界：{1}"
+	PendingChoice: "{0} 的配方选择：{1} 条完整可行路线。"
+	PlannerBudget: 已达到搜索上限，部分路线可能尚未评估。
+	Producers: 产出配方（范围内 {0} / 总计 {1}）
+	RecipeAndRoute: "{0}  ·  {1}  ·  路线：{2}"
+	RecipeAndLocal: "{0}  ·  {1}"
+	MoreEntries: 图中还有 {0} 条记录。
+	Requirements: 材料需求
+	UsedBy: 配方 #{0} 使用 {1}
+	Makes: 每次制作产出 {0} ×{1}
+	LocalStatus: 配方局部状态：{0}
+	RootCandidate: 目标完整路线：{0}
+	CandidateEvidence: 规划证据：{0}
+	DependencyCandidate: 依赖候选路线：{0}
+	Planned: 目标计划包含 {0} 次制作
+	None: 无
+	LogicalGroup: 配方组：{0}
+	GroupAllocation: 计划分配：{0}
+	Stack: "{0} ×{1}"
+	LocalAmounts: 每次制作：需 {0} · 可用 {1} · 缺 {2}
+	LedgerAmounts: 规划账本：需 {0} · 可用 {1} · 缺 {2}
+	Stations: 工作站
+	Conditions: 配方条件
+	Constraint: "{0}  ·  {1}"
+	Missing: 缺少
+	Satisfied: 可用
+	TileId: 工作站 #{0}
+
+	Local: {
+		ReadyNow: 可直接制作
+		NeedsIngredients: 缺少材料
+		BlockedByStation: 缺少工作站
+		BlockedByCondition: 配方条件未满足
+		UnknownConstraint: 配方条件未知
+	}
+
+	Route: {
+		Craftable: 递归可制作
+		ChoiceRequired: 需要选择配方
+		NeedsIngredients: 缺少基础材料
+		BlockedByStation: 受工作站限制
+		BlockedByCondition: 受配方条件限制
+		UnknownConstraint: 约束未知
+		Deferred: 规划受限或待定
+		NoRoute: 无完整可行路线
+	}
+
+	Candidate: {
+		FullyViable: 完整路线可行
+		RequiresUserChoice: 需进一步选择
+		Failed: 不可行
+		Blocked: 受要求限制
+		Deferred: 待定
+		NotApplicable: 不适用
+	}
+
+	Decision: {
+		AutoSelectedOnlyViable: 规划器找到唯一完整路线。
+		UserChoiceRequired: "{0} 条完整路线需要选择配方。"
+		ExplicitlySelected: 指定路线可行。
+		UnresolvedDependencyChoice: 需要选择依赖配方。
+		UnresolvedDeferred: 路线评估尚未完成。
+		NoViableCandidate: 没有候选配方具备完整可行路线。
+		InvalidExplicitChoice: 指定配方无效。
+		ExplicitChoiceFailed: 指定配方无法完成目标。
+	}
+
+	Condition: {
+		Satisfied: 已满足
+		Unsatisfied: 未满足
+		Unknown: 未知
+	}
+
+	Plan: {
+		Success: 有完整路线
+		RecipeOutsideTargetSubgraph: 配方超出已加载子图
+		NoProducerInTargetSubgraph: 已加载子图内没有产出配方
+		InsufficientTerminalResource: 缺少基础材料
+		TargetSubgraphTruncated: 达到子图提取上限
+		AlternativeProducerDeferred: 替代配方待定
+		DeferredRecipeGroupAllocation: 配方组分配待定
+		BlockedByStation: 缺少工作站
+		BlockedByCondition: 配方条件未满足
+		UnknownConstraint: 条件未知
+		CycleBoundary: 依赖循环
+		PlanningDepthBoundary: 达到规划深度上限
+		UserChoiceRequired: 需要选择配方
+		AlternativeResolutionDeferred: 候选路线评估未完成
+		NoViableAlternative: 没有可行替代路线
+		InvalidExplicitChoice: 配方选择无效
+		ExplicitChoiceFailed: 所选配方不可行
+		NoViablePlan: 没有可行路线
+		NoViableResourceAllocation: 没有可行材料分配
+		SearchBudgetBoundary: 达到规划搜索上限
+	}
+}
