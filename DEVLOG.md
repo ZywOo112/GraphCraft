@@ -891,9 +891,11 @@ The command below really mutates inventory. Test in single-player with `/gcexecp
 3. Iron Pickaxe (ItemID 1): hold Iron Bar x10 plus a concrete mixed Any Wood allocation such as Wood x1 and Boreal Wood x2; stand by an Anvil; run `/gcexecplan 1 1`, then `/gcexecute 1 1 confirm`. Expect exactly those concrete wood types and bars consumed, one pickaxe inserted, and no group re-selection.
 4. Rollback: dangerous live fault injection is not exposed by the Release-facing command. Use the load-time deterministic T14-T17/T20-T21 matrix as the rollback evidence.
 
+On 2026-11-19, the user confirmed that the Copper Watch, Healing Potion, and Iron Pickaxe cases passed in single-player. This completes Milestone 5 validation.
+
 ### Deferred Boundaries
 
 - Multiplayer inventory authority/synchronization is not implemented; the live command performs zero mutation outside single-player.
 - Third-party storage adapters remain M7. Mod recipes/items and arbitrary Global/recipe hooks that cause non-inventory side effects are not claimed transactional.
 - Vanilla inventory and output Item state are rollback-safe via clones, but arbitrary hook-created world/network effects cannot be generically undone. Such compatibility requires an explicit future adapter/contract.
-- No M6 UI and no M7 integration were added. M5.2 remains awaiting real in-game manual validation before any `M5 COMPLETE` claim.
+- Production UI work is deferred to M6.

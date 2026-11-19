@@ -106,9 +106,9 @@
 
 ## 当前状态
 
-- 已完成：Milestone 0-4 Final、Milestone 5.1，以及 Milestone 5.2 自动实现与加载期验证。
+- 已完成：Milestone 0-4 Final、Milestone 5（`M5 COMPLETE`）。
 - 已验证：resource sources、完整 M4 planning/backtracking/group allocation、M5.1 dry-run/preflight、M5.2 transaction/rollback synthetic matrix、真实 Terraria recipe-semantics preparation 和 dedicated load。
-- 真实 Player capture/dry-run 通过 `/gcstate`、`/gcexecplan` 提供；真实 mutation 通过 single-player-only `/gcexecute ... confirm` 提供。M5.2 尚待真人游戏验证，不能宣布 `M5 COMPLETE`。
+- 真实 Player capture/dry-run 通过 `/gcstate`、`/gcexecplan` 提供；真实 mutation 通过 single-player-only `/gcexecute ... confirm` 提供。M5.2 已由用户确认通过单人游戏验证。
 - 未开始：Milestone 6 正式 UI、Milestone 7 third-party storage/compatibility，以及不在当前事务边界内的 multiplayer authority 和 arbitrary third-party hook rollback。
 
 ## Milestone 5.2 Transaction Constraints (Authoritative)
@@ -228,7 +228,7 @@
 
 ## 下一里程碑
 
-Milestone 5.1 已完成 execution planning、SourceId allocation、transaction-local intermediate replay、fresh resource/environment/condition preflight 与真实 Vanilla inventory dry-run command。下一步是 M5.2 transaction lifecycle；在明确 prepare/reserve/commit/rollback、intermediate ownership、Terraria craft hooks 和 multiplayer authority 前，不得开始真实 mutation。
+下一里程碑为 Milestone 6 正式 UI。
 
 ## Milestone 5.1 Constraints (Authoritative)
 
